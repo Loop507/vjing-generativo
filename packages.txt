@@ -1,1 +1,2 @@
 ffmpeg
+portaudio19-dev
