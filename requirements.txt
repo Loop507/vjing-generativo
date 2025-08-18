@@ -3,6 +3,6 @@ librosa
 numpy
 matplotlib
 scipy
-moviepy
+opencv-python
 imageio
 Pillow
