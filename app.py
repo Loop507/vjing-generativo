@@ -37,8 +37,10 @@ illusion_type = st.sidebar.selectbox(
 # Input titolo video
 video_title = st.text_input("📝 Titolo del video", "Visual Synthesis")
 
-# Posizione titolo
-position = st.selectbox("📍 Posizione del titolo", ["Sopra", "Sotto", "Destra", "Sinistra", "Centro"])
+# --- MODIFICA RICHIESTA: Due selettori per la posizione del titolo ---
+st.sidebar.subheader("📍 Posizione del Titolo")
+vertical_position = st.sidebar.selectbox("Posizione Verticale", ["Sopra", "Sotto"])
+horizontal_position = st.sidebar.selectbox("Posizione Orizzontale", ["Sinistra", "Destra", "Centro"])
 
 # Scelta formato
 aspect_ratio = st.selectbox("📺 Formato video", ["16:9", "1:1", "9:16"])
@@ -51,7 +53,10 @@ def analyze_audio(audio_path, duration, fps):
     y, sr = librosa.load(audio_path, sr=None)
     
     # Calcola BPM
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    try:
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    except:
+        tempo = 0.0 # Valore di default in caso di errore
     
     # Divide in frames
     frame_length = int(sr / fps)
