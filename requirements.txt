@@ -6,4 +6,3 @@ scipy
 moviepy
 imageio
 Pillow
-PyAudio
