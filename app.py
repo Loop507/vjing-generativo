@@ -655,7 +655,7 @@ def generate_illusion_frame(illusion_type, width, height, frame, audio_features,
     elif illusion_type == "Spiral Illusion":
         return create_spiral_illusion(width, height, frame, audio_features, intensity, random_seed)
     else:
-        return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
+        return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
 
 def apply_colors(img, line_color, bg_color):
     """Applica i colori personalizzati all'immagine"""
