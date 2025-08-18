@@ -3,3 +3,4 @@ librosa
 numpy
 matplotlib
 moviepy
+imageio[ffmpeg]
