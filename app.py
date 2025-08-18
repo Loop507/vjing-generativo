@@ -3,11 +3,12 @@ import librosa
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-import moviepy.editor as mpy
 import tempfile
 import os
 from scipy import ndimage
 import random
+import cv2  # Importazione di OpenCV
+import subprocess # Per la gestione di ffmpeg
 
 # Configurazione pagina
 st.set_page_config(page_title="VJing Generativo", layout="wide")
@@ -709,78 +710,56 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
         st.info(f"🌀 Generazione illusione: {illusion_type}")
         st.info(f"🎯 BPM rilevato: {audio_features['tempo']:.1f}")
 
-        # Funzione animazione
-        fig, ax = plt.subplots(figsize=(size[0]/100, size[1]/100), dpi=100)
-        ax.set_xlim(0, size[0])
-        ax.set_ylim(0, size[1])
-        ax.axis("off")
-        fig.patch.set_facecolor('black')
-        
-        im = ax.imshow(np.zeros((size[1], size[0], 3)), aspect='equal')
+        # --- SEZIONE MODIFICATA PER USARE OPENCV ---
+        # Configura l'encoder video di OpenCV
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        tmp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+        out = cv2.VideoWriter(tmp_video_path, fourcc, fps, size)
 
-        def animate(frame):
+        # Progress bar
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        # Genera e salva ogni frame
+        for i in range(n_frames):
             # Genera frame dell'illusione
             illusion_img = generate_illusion_frame(
-                illusion_type, size[0], size[1], frame, 
+                illusion_type, size[0], size[1], i, 
                 audio_features, intensity, random_seed
             )
             
             # Applica colori personalizzati
             colored_img = apply_colors(illusion_img, line_color, bg_color)
             
-            im.set_array(colored_img)
-            return [im]
+            # Converte in BGR per OpenCV e salva
+            frame_bgr = cv2.cvtColor((colored_img * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+            out.write(frame_bgr)
 
-        # Progress bar
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        # Crea animazione
-        anim = FuncAnimation(fig, animate, frames=n_frames, blit=True, interval=1000/fps)
-
-        # Salva animazione come mp4 (senza audio)
-        tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        
-        def progress_callback(current_frame, total_frames):
-            progress = current_frame / total_frames
+            # Aggiorna progress bar
+            progress = (i + 1) / n_frames
             progress_bar.progress(progress)
-            status_text.text(f"Rendering frame {current_frame}/{total_frames} ({progress:.1%})")
+            status_text.text(f"Rendering frame {i+1}/{n_frames} ({progress:.1%})")
 
-        anim.save(tmp_video.name, fps=fps, extra_args=['-vcodec', 'libx264'])
-        plt.close(fig)
+        out.release()
 
-        # Aggiungi audio + titolo con MoviePy
+        # Aggiungi audio con ffmpeg usando subprocess
         st.info("🎬 Composizione finale con audio e titolo...")
-        video_clip = mpy.VideoFileClip(tmp_video.name).set_audio(mpy.AudioFileClip(tmp_audio.name))
-
-        # Overlay testo titolo se specificato
-        if video_title.strip():
-            txt_clip = mpy.TextClip(
-                video_title, 
-                fontsize=min(60, size[0]//20), 
-                color='white',
-                font='Arial-Bold'
-            ).set_duration(video_clip.duration)
-
-            if position == "Sopra":
-                txt_clip = txt_clip.set_position(("center", "top"))
-            elif position == "Sotto":
-                txt_clip = txt_clip.set_position(("center", "bottom"))
-            elif position == "Destra":
-                txt_clip = txt_clip.set_position(("right", "center"))
-            elif position == "Sinistra":
-                txt_clip = txt_clip.set_position(("left", "center"))
-            else:  # Centro
-                txt_clip = txt_clip.set_position("center")
-
-            final = mpy.CompositeVideoClip([video_clip, txt_clip])
-        else:
-            final = video_clip
-
-        # Salvataggio finale
-        output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        final.write_videofile(output_file.name, codec="libx264", audio_codec="aac", verbose=False)
-
+        
+        output_final_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+        
+        # Comando ffmpeg per unire video e audio
+        command = [
+            'ffmpeg',
+            '-i', tmp_video_path,
+            '-i', tmp_audio.name,
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-strict', 'experimental',
+            output_final_path
+        ]
+        
+        subprocess.run(command, check=True)
+        
         # Successo!
         st.success("✨ Video generato con successo!")
         
@@ -794,7 +773,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
             st.metric("FPS", fps)
 
         # Download
-        with open(output_file.name, "rb") as f:
+        with open(output_final_path, "rb") as f:
             st.download_button(
                 "📥 Scarica Video Illusorio", 
                 f, 
@@ -805,8 +784,8 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
 
         # Cleanup
         os.remove(tmp_audio.name)
-        os.remove(tmp_video.name)
-        os.remove(output_file.name)
+        os.remove(tmp_video_path)
+        os.remove(output_final_path)
 
         progress_bar.empty()
         status_text.empty()
