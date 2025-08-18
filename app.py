@@ -1,14 +1,12 @@
 import streamlit as st
 import librosa
 import numpy as np
-import matplotlib.pyplot as plt
 import tempfile
 import os
-from scipy import ndimage
 import random
-import cv2  # Importazione di OpenCV
-import subprocess  # Per la gestione di ffmpeg
-from PIL import Image, ImageDraw, ImageFont # Nuove importazioni per la gestione del titolo
+import cv2
+import subprocess
+from PIL import Image, ImageDraw, ImageFont
 
 # Configurazione pagina
 st.set_page_config(page_title="VJing Generativo", layout="wide")
@@ -30,7 +28,7 @@ bg_color = st.sidebar.color_picker("Colore sfondo", "#000000")
 
 # Tipo di illusione
 illusion_type = st.sidebar.selectbox(
-    "🌀 Tipo di Illusione", 
+    "🌀 Tipo di Illusione",
     ["Illusory Tilt", "Illusory Motion", "Y-Junctions", "Drifting Spines", "Spiral Illusion"]
 )
 
@@ -53,10 +51,11 @@ def analyze_audio(audio_path, duration, fps):
     y, sr = librosa.load(audio_path, sr=None)
     
     # Calcola BPM
+    # --- FIX per TypeError ---
     try:
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
     except Exception as e:
-        tempo = 0.0 # Valore di default in caso di errore
+        tempo = 0.0  # Valore di default in caso di errore
         st.warning(f"⚠️ Attenzione: Impossibile rilevare il BPM. L'errore originale è: {e}")
     
     # Divide in frames
@@ -260,7 +259,7 @@ def fill_diamond(img, points, color):
 def point_in_triangle(x, y, triangle_points):
     """Verifica se un punto è dentro un triangolo"""
     x1, y1 = triangle_points[0]
-    x2, y2 = triangle_points[1] 
+    x2, y2 = triangle_points[1]
     x3, y3 = triangle_points[2]
     
     denom = (y2 - y3)*(x1 - x3) + (x3 - x2)*(y1 - y3)
@@ -405,7 +404,7 @@ def create_y_junctions_illusion(width, height, frame, audio_features, intensity,
             offset_x = np.sin(frame * 0.1 + col * 0.2) * mid_val * 10 * intensity
             offset_y = np.cos(frame * 0.1 + row * 0.2) * high_val * 10 * intensity
             
-            draw_y_junction(img, center_x + offset_x, center_y + offset_y, 
+            draw_y_junction(img, center_x + offset_x, center_y + offset_y,
                           int(10 + bass_val * 5 * intensity))
     
     return img
@@ -658,6 +657,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
         random_seed = random.randint(1, 10000)
         
         st.info(f"🌀 Generazione illusione: {illusion_type}")
+        # --- FIX per TypeError: il valore è sempre float o 0.0
         st.info(f"🎯 BPM rilevato: {audio_features['tempo']:.1f}")
 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -669,7 +669,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
 
         for i in range(n_frames):
             illusion_img = generate_illusion_frame(
-                illusion_type, size[0], size[1], i, 
+                illusion_type, size[0], size[1], i,
                 audio_features, intensity, random_seed
             )
             
@@ -700,30 +700,36 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
             output_final_path
         ]
         
-        subprocess.run(command, check=True)
-        
-        st.success("✨ Video generato con successo!")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Durata", f"{duration:.1f}s")
-        with col2:
-            st.metric("Risoluzione", f"{size[0]}x{size[1]}")
-        with col3:
-            st.metric("FPS", fps)
+        try:
+            subprocess.run(command, check=True)
+            st.success("✨ Video generato con successo!")
+            
+            # Mostra info finali
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Durata", f"{duration:.1f}s")
+            with col2:
+                st.metric("Risoluzione", f"{size[0]}x{size[1]}")
+            with col3:
+                st.metric("FPS", fps)
 
-        with open(output_final_path, "rb") as f:
-            st.download_button(
-                "📥 Scarica Video Illusorio", 
-                f, 
-                file_name=f"illusion_{illusion_type.lower().replace(' ', '_')}_output.mp4", 
-                mime="video/mp4",
-                type="primary"
-            )
-
-        os.remove(tmp_audio.name)
-        os.remove(tmp_video_path)
-        os.remove(output_final_path)
+            # Download
+            with open(output_final_path, "rb") as f:
+                st.download_button(
+                    "📥 Scarica Video Illusorio",
+                    f,
+                    file_name=f"illusion_{illusion_type.lower().replace(' ', '_')}_output.mp4",
+                    mime="video/mp4",
+                    type="primary"
+                )
+        except subprocess.CalledProcessError as e:
+            st.error(f"❌ Errore durante l'aggiunta dell'audio (ffmpeg). Assicurati che ffmpeg sia installato. Errore: {e}")
+        finally:
+            # Cleanup
+            os.remove(tmp_audio.name)
+            os.remove(tmp_video_path)
+            if os.path.exists(output_final_path):
+                os.remove(output_final_path)
 
         progress_bar.empty()
         status_text.empty()
@@ -756,7 +762,7 @@ with st.sidebar:
     st.markdown("""
     **🎵 Audio → Effetti Visivi:**
     - 🔊 **Bassi** → movimento globale, rotazioni
-    - 🎵 **Medi** → deformazioni, vibrazioni  
+    - 🎵 **Medi** → deformazioni, vibrazioni
     - 🎶 **Alti** → dettagli rapidi, micro-shift
     
     **🎯 BPM** → velocità transizioni
@@ -765,5 +771,5 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("🧬 **Neuroscienza** applicata")
-    st.markdown("🎨 **Arte generativa** guidata da musica") 
+    st.markdown("🎨 **Arte generativa** guidata da musica")
     st.markdown("⚡ **Illusioni** scientificamente accurate")
