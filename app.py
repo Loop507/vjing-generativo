@@ -645,6 +645,7 @@ def create_spiral_illusion(width, height, frame, audio_features, intensity, rand
 def generate_illusion_frame(illusion_type, width, height, frame, audio_features, intensity, random_seed):
     """Genera un frame dell'illusione specificata"""
     if illusion_type == "Illusory Tilt":
+        # Ho rimosso la parte "_illusory_tilt" che causava un SyntaxError
         return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
     elif illusion_type == "Illusory Motion":
         return create_illusory_motion(width, height, frame, audio_features, intensity, random_seed)
@@ -655,7 +656,8 @@ def generate_illusion_frame(illusion_type, width, height, frame, audio_features,
     elif illusion_type == "Spiral Illusion":
         return create_spiral_illusion(width, height, frame, audio_features, intensity, random_seed)
     else:
-        return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
+        # Ho corretto anche questa riga per coerenza
+        return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
 
 def apply_colors(img, line_color, bg_color):
     """Applica i colori personalizzati all'immagine"""
@@ -663,12 +665,12 @@ def apply_colors(img, line_color, bg_color):
     line_rgb = np.array([int(line_color[1:3], 16)/255, int(line_color[3:5], 16)/255, int(line_color[5:7], 16)/255])
     bg_rgb = np.array([int(bg_color[1:3], 16)/255, int(bg_color[3:5], 16)/255, int(bg_color[5:7], 16)/255])
     
-    # Applica colori
+    # Applica colori - Ho corretto la logica di mascheramento per colorare tutte le forme
     colored_img = np.zeros_like(img)
-    mask = img[:,:,0] > 0.5  # Maschera per le linee/forme
+    mask_lines = img[:,:,0] > 0.1  # Ho abbassato la soglia per catturare anche i colori scuri
     
-    colored_img[mask] = line_rgb
-    colored_img[~mask] = bg_rgb
+    colored_img[mask_lines] = line_rgb
+    colored_img[~mask_lines] = bg_rgb
     
     return colored_img
 
@@ -816,8 +818,7 @@ with st.sidebar:
     st.markdown("""
     **🔬 Basate su ricerca neuroscientifica:**
     
-    🌀 **Illusory Tilt** 
-    - Line-type, Mixed-type, Edge-type
+    🌀 **Illusory Tilt** - Line-type, Mixed-type, Edge-type
     - Triangoli e contrasti che ingannano la percezione
     
     ⚡ **Illusory Motion**
@@ -829,8 +830,7 @@ with st.sidebar:
     - Retinal slip simulation
     - Griglie con movimenti illusori
     
-    🌊 **Drifting Spines**  
-    - Elementi che sembrano scivolare
+    🌊 **Drifting Spines** - Elementi che sembrano scivolare
     - Micro-movimenti oculari amplificati
     """)
     
