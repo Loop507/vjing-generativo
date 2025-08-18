@@ -2,5 +2,7 @@ streamlit
 librosa
 numpy
 matplotlib
-moviepy
 scipy
+moviepy
+imageio
+Pillow
