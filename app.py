@@ -480,57 +480,6 @@ def draw_spine_element(img, cx, cy, size, phase, intensity):
     draw_line(img, tip_x, tip_y, base1_x, base1_y, 1)
     draw_line(img, tip_x, tip_y, base2_x, base2_y, 1)
 
-def create_rotating_circles(width, height, frame, audio_features, intensity, random_seed):
-    """Crea illusione con cerchi rotanti"""
-    random.seed(random_seed)
-    img = np.zeros((height, width, 3))
-    
-    bass_val = audio_features['bass'][frame % len(audio_features['bass'])]
-    mid_val = audio_features['mid'][frame % len(audio_features['mid'])]
-    high_val = audio_features['high'][frame % len(audio_features['high'])]
-    
-    center_x, center_y = width // 2, height // 2
-    num_circles = int(5 + mid_val * 10 * intensity)
-    
-    for i in range(num_circles):
-        radius = (20 + i * 15) * (1 + bass_val * intensity)
-        rotation_speed = 0.05 + high_val * 0.1 * intensity
-        angle = frame * rotation_speed + i * np.pi / 4
-        
-        circle_x = center_x + radius * 0.3 * np.cos(angle)
-        circle_y = center_y + radius * 0.3 * np.sin(angle)
-        
-        y, x = np.ogrid[:height, :width]
-        mask = (x - circle_x)**2 + (y - circle_y)**2 <= (10 + bass_val * 5 * intensity)**2
-        img[mask] = [1, 1, 1]
-        
-        inner_mask = (x - circle_x)**2 + (y - circle_y)**2 <= (5 + bass_val * 2 * intensity)**2
-        img[inner_mask] = [0, 0, 0]
-    
-    return img
-
-def create_wave_distortion(width, height, frame, audio_features, intensity, random_seed):
-    """Crea distorsione a onde"""
-    random.seed(random_seed)
-    
-    bass_val = audio_features['bass'][frame % len(audio_features['bass'])]
-    mid_val = audio_features['mid'][frame % len(audio_features['mid'])]
-    high_val = audio_features['high'][frame % len(audio_features['high'])]
-    
-    x, y = np.meshgrid(np.arange(width), np.arange(height))
-    
-    wave1 = np.sin((x + frame * bass_val * intensity) * 0.02) * mid_val * 20 * intensity
-    wave2 = np.sin((y + frame * mid_val * intensity) * 0.03) * bass_val * 15 * intensity
-    wave3 = np.sin((x + y + frame * high_val * intensity) * 0.01) * high_val * 10 * intensity
-    
-    combined_wave = wave1 + wave2 + wave3
-    stripes = np.sin((y + combined_wave) * 0.1)
-    
-    normalized = (stripes + 1) / 2
-    img = np.stack([normalized, normalized, normalized], axis=2)
-    
-    return img
-
 def create_spiral_illusion(width, height, frame, audio_features, intensity, random_seed):
     """Crea illusione spirale"""
     random.seed(random_seed)
