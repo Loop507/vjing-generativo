@@ -3,12 +3,11 @@ import librosa
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import moviepy.editor as mpy
 import tempfile
 import os
 from scipy import ndimage
 import random
-import cv2  # Importazione di OpenCV
-import subprocess # Per la gestione di ffmpeg
 
 # Configurazione pagina
 st.set_page_config(page_title="VJing Generativo", layout="wide")
@@ -52,11 +51,12 @@ def analyze_audio(audio_path, duration, fps):
     """Analizza l'audio per estrarre features musicali"""
     y, sr = librosa.load(audio_path, sr=None)
     
-    # Calcola BPM
+    # Calcola BPM e gestisci l'errore
     try:
         tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    except:
-        tempo = 0.0 # Valore di default in caso di errore
+    except Exception as e:
+        tempo = 0.0  # Valore di default in caso di errore
+        st.warning(f"⚠️ Attenzione: Impossibile rilevare il BPM. L'errore originale è: {e}")
     
     # Divide in frames
     frame_length = int(sr / fps)
@@ -651,7 +651,6 @@ def create_spiral_illusion(width, height, frame, audio_features, intensity, rand
 def generate_illusion_frame(illusion_type, width, height, frame, audio_features, intensity, random_seed):
     """Genera un frame dell'illusione specificata"""
     if illusion_type == "Illusory Tilt":
-        # Ho rimosso la parte "_illusory_tilt" che causava un SyntaxError
         return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
     elif illusion_type == "Illusory Motion":
         return create_illusory_motion(width, height, frame, audio_features, intensity, random_seed)
@@ -662,7 +661,7 @@ def generate_illusion_frame(illusion_type, width, height, frame, audio_features,
     elif illusion_type == "Spiral Illusion":
         return create_spiral_illusion(width, height, frame, audio_features, intensity, random_seed)
     else:
-        # Ho corretto anche questa riga per coerenza
+        # Corretto il nome della funzione per l'opzione di default
         return create_illusory_tilt(width, height, frame, audio_features, intensity, random_seed)
 
 def apply_colors(img, line_color, bg_color):
@@ -671,12 +670,12 @@ def apply_colors(img, line_color, bg_color):
     line_rgb = np.array([int(line_color[1:3], 16)/255, int(line_color[3:5], 16)/255, int(line_color[5:7], 16)/255])
     bg_rgb = np.array([int(bg_color[1:3], 16)/255, int(bg_color[3:5], 16)/255, int(bg_color[5:7], 16)/255])
     
-    # Applica colori - Ho corretto la logica di mascheramento per colorare tutte le forme
+    # Applica colori
     colored_img = np.zeros_like(img)
-    mask_lines = img[:,:,0] > 0.1  # Ho abbassato la soglia per catturare anche i colori scuri
+    mask = img[:,:,0] > 0.5  # Maschera per le linee/forme
     
-    colored_img[mask_lines] = line_rgb
-    colored_img[~mask_lines] = bg_rgb
+    colored_img[mask] = line_rgb
+    colored_img[~mask] = bg_rgb
     
     return colored_img
 
@@ -715,56 +714,82 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
         st.info(f"🌀 Generazione illusione: {illusion_type}")
         st.info(f"🎯 BPM rilevato: {audio_features['tempo']:.1f}")
 
-        # --- SEZIONE MODIFICATA PER USARE OPENCV ---
-        # Configura l'encoder video di OpenCV
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        tmp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-        out = cv2.VideoWriter(tmp_video_path, fourcc, fps, size)
+        # Funzione animazione
+        fig, ax = plt.subplots(figsize=(size[0]/100, size[1]/100), dpi=100)
+        ax.set_xlim(0, size[0])
+        ax.set_ylim(0, size[1])
+        ax.axis("off")
+        fig.patch.set_facecolor('black')
+        
+        im = ax.imshow(np.zeros((size[1], size[0], 3)), aspect='equal')
 
-        # Progress bar
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
-        # Genera e salva ogni frame
-        for i in range(n_frames):
+        def animate(frame):
             # Genera frame dell'illusione
             illusion_img = generate_illusion_frame(
-                illusion_type, size[0], size[1], i, 
+                illusion_type, size[0], size[1], frame, 
                 audio_features, intensity, random_seed
             )
             
             # Applica colori personalizzati
             colored_img = apply_colors(illusion_img, line_color, bg_color)
             
-            # Converte in BGR per OpenCV e salva
-            frame_bgr = cv2.cvtColor((colored_img * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
-            out.write(frame_bgr)
+            im.set_array(colored_img)
+            return [im]
 
-            # Aggiorna progress bar
-            progress = (i + 1) / n_frames
+        # Progress bar
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        # Crea animazione
+        anim = FuncAnimation(fig, animate, frames=n_frames, blit=True, interval=1000/fps)
+
+        # Salva animazione come mp4 (senza audio)
+        tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        
+        def progress_callback(current_frame, total_frames):
+            progress = current_frame / total_frames
             progress_bar.progress(progress)
-            status_text.text(f"Rendering frame {i+1}/{n_frames} ({progress:.1%})")
+            status_text.text(f"Rendering frame {current_frame}/{total_frames} ({progress:.1%})")
 
-        out.release()
+        anim.save(tmp_video.name, fps=fps, extra_args=['-vcodec', 'libx264'])
+        plt.close(fig)
 
-        # Aggiungi audio con ffmpeg usando subprocess
+        # Aggiungi audio + titolo con MoviePy
         st.info("🎬 Composizione finale con audio e titolo...")
-        
-        output_final_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-        
-        # Comando ffmpeg per unire video e audio
-        command = [
-            'ffmpeg',
-            '-i', tmp_video_path,
-            '-i', tmp_audio.name,
-            '-c:v', 'copy',
-            '-c:a', 'aac',
-            '-strict', 'experimental',
-            output_final_path
-        ]
-        
-        subprocess.run(command, check=True)
-        
+        video_clip = mpy.VideoFileClip(tmp_video.name).set_audio(mpy.AudioFileClip(tmp_audio.name))
+
+        # Overlay testo titolo se specificato
+        if video_title.strip():
+            txt_clip = mpy.TextClip(
+                video_title, 
+                fontsize=min(60, size[0]//20), 
+                color='white',
+                font='Arial-Bold'
+            ).set_duration(video_clip.duration)
+
+            # --- LOGICA AGGIORNATA PER LA POSIZIONE DEL TITOLO ---
+            h_pos = "center"
+            if horizontal_position == "Sinistra":
+                h_pos = "West"
+            elif horizontal_position == "Destra":
+                h_pos = "East"
+            
+            v_pos = "center"
+            if vertical_position == "Sopra":
+                v_pos = "North"
+            elif vertical_position == "Sotto":
+                v_pos = "South"
+            
+            txt_clip = txt_clip.set_position((h_pos, v_pos))
+
+            final = mpy.CompositeVideoClip([video_clip, txt_clip])
+        else:
+            final = video_clip
+
+        # Salvataggio finale
+        output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        final.write_videofile(output_file.name, codec="libx264", audio_codec="aac", verbose=False)
+
         # Successo!
         st.success("✨ Video generato con successo!")
         
@@ -778,7 +803,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
             st.metric("FPS", fps)
 
         # Download
-        with open(output_final_path, "rb") as f:
+        with open(output_file.name, "rb") as f:
             st.download_button(
                 "📥 Scarica Video Illusorio", 
                 f, 
@@ -789,8 +814,8 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
 
         # Cleanup
         os.remove(tmp_audio.name)
-        os.remove(tmp_video_path)
-        os.remove(output_final_path)
+        os.remove(tmp_video.name)
+        os.remove(output_file.name)
 
         progress_bar.empty()
         status_text.empty()
