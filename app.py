@@ -124,21 +124,14 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
         anim.save(tmp_video.name,fps=fps,extra_args=['-vcodec','libx264'])
         plt.close(fig)
 
-        # ffmpeg merge audio + video
-        output_file=tempfile.NamedTemporaryFile(delete=False,suffix=".mp4")
-        (
-            ffmpeg
-            .input(tmp_video.name)
-            .output(tmp_audio.name)
-        )
-        ffmpeg.input(tmp_video.name).output(tmp_audio.name).run()
-
-        # finale con titolo
+        # 🔥 Merge audio + video con ffmpeg
+        output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         video = ffmpeg.input(tmp_video.name)
         audio = ffmpeg.input(tmp_audio.name)
-        final = ffmpeg.output(video, audio, output_file.name, vcodec="libx264", acodec="aac", strict="experimental")
+        final = ffmpeg.output(video, audio, output_file.name, vcodec="libx264", acodec="aac", shortest=None, strict="experimental")
+        ffmpeg.run(final, overwrite_output=True)
 
-        # Overlay titolo se serve
+        # Overlay titolo (se inserito)
         if video_title.strip():
             pos_map={
                 "Sopra":"(w-text_w)/2:20",
@@ -147,15 +140,18 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio", type="primary"):
                 "Sinistra":"20:(h-text_h)/2",
                 "Centro":"(w-text_w)/2:(h-text_h)/2"
             }
-            final = ffmpeg.filter([video], 'drawtext',
-                text=video_title,
-                x=pos_map[position].split(":")[0],
-                y=pos_map[position].split(":")[1],
-                fontsize=48, fontcolor="white"
+            titled_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+            (
+                ffmpeg
+                .input(output_file.name)
+                .output(
+                    titled_file.name,
+                    vf=f"drawtext=text='{video_title}':fontcolor=white:fontsize=48:x={pos_map[position].split(':')[0]}:y={pos_map[position].split(':')[1]}",
+                    vcodec="libx264", acodec="aac", strict="experimental"
+                )
+                .run(overwrite_output=True)
             )
-            final = ffmpeg.output(final, audio, output_file.name, vcodec="libx264", acodec="aac", strict="experimental")
-
-        ffmpeg.run(final, overwrite_output=True)
+            os.replace(titled_file.name, output_file.name)
 
         with open(output_file.name,"rb") as f:
             st.download_button("📥 Scarica Video Illusorio",f,file_name="vjing_output.mp4",mime="video/mp4")
