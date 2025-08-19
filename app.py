@@ -31,7 +31,7 @@ illusion_type = st.sidebar.selectbox(
     [
         "Illusory Tilt (Line)", "Illusory Tilt (Mixed)", "Illusory Tilt (Edge)",
         "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
-        "Y-Junctions", "Pulsing Grid", "Spiral Illusion"
+        "Y-Junctions", "Drifting Spines", "Spiral Illusion", "Zollner Illusion"
     ]
 )
 
@@ -303,31 +303,41 @@ def y_junctions_illusion(width, height, frame, audio_features, intensity, elemen
                     img[rr[valid], cc[valid]] = 0.5
     return img
 
-def pulsing_grid_illusion(width, height, frame, audio_features, intensity, element_size_factor):
-    """
-    NUOVO EFFETTO: GRIGLIA PULSANTE - Risponde ai bassi per un effetto "battito"
-    """
+def drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
+    tempo_factor = audio_features["tempo"] / 120.0
 
-    grid_spacing = int(30 * element_size_factor)
-    base_radius = int(5 * element_size_factor)
-    
-    for y in range(0, height, grid_spacing):
-        for x in range(0, width, grid_spacing):
-            pulse_radius = base_radius + int(bass_val * 20 * intensity)
-            
-            # Aggiunge un effetto di jitter con gli alti
-            x_jitter = int(random.gauss(0, high_val * 2 * intensity))
-            y_jitter = int(random.gauss(0, high_val * 2 * intensity))
-            
-            cx, cy = x + x_jitter, y + y_jitter
-            
-            if 0 <= cx < width and 0 <= cy < height:
-                rr, cc = disk((cy, cx), pulse_radius, shape=(height, width))
+    drift_speed = max(0.01, tempo_factor * intensity)
+    drift_offset = (frame * drift_speed) % 100
+
+    spine_spacing = int(40 * element_size_factor + high_val * 30)
+    spine_length = int(20 * element_size_factor + high_val * 25 * intensity)
+
+    for y in range(0, height, spine_spacing):
+        for x in range(int(-drift_offset), width + spine_spacing, spine_spacing):
+            if 0 <= x < width:
+                cx, cy = x, y + spine_spacing//2
+                start_y = max(0, cy - spine_length//2)
+                end_y = min(height-1, cy + spine_length//2)
+                rr, cc = line(start_y, cx, end_y, cx)
                 valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                 img[rr[valid], cc[valid]] = 1.0
+                arrow_size = spine_length // 4
+                if arrow_size > 0:
+                    rr, cc = line(cy - spine_length//2, cx, max(0, cy - spine_length//2 + arrow_size), max(0, cx - arrow_size))
+                    valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+                    img[rr[valid], cc[valid]] = 1.0
+                    rr, cc = line(cy - spine_length//2, cx, max(0, cy - spine_length//2 + arrow_size), min(width-1, cx + arrow_size))
+                    valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+                    img[rr[valid], cc[valid]] = 1.0
+
+    for x in range(0, width, max(1, spine_spacing//2)):
+        hy = int(height//2 + 50 * np.sin(x * 0.05 + drift_offset * 0.1))
+        if 0 <= hy < height:
+            radius = max(1, int(3 * high_val * intensity))
+            rr, cc = disk((hy, x), radius, shape=(height, width))
+            img[rr, cc] = 0.7
     return img
 
 def spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor):
@@ -354,6 +364,45 @@ def spiral_illusion(width, height, frame, audio_features, intensity, element_siz
                 img[rr, cc] = intensity_val
     return img
 
+def zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor):
+    img = np.zeros((height, width), dtype=float)
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    # Spaziatura delle linee verticali, controllata dai bassi
+    line_spacing = int(25 * element_size_factor + bass_val * 20 * intensity)
+    
+    # Angolo delle piccole linee oblique, controllato dai medi
+    oblique_angle = np.radians(45 + mid_val * 45)
+    
+    # Spostamento orizzontale per creare un effetto di "scorrimento"
+    horizontal_shift = int(high_val * 10)
+
+    for x in range(0, width + line_spacing, line_spacing):
+        x_shifted = x + horizontal_shift
+        # Disegna le lunghe linee parallele
+        rr, cc = line(0, x_shifted, height - 1, x_shifted)
+        valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+        img[rr[valid], cc[valid]] = 1.0
+
+        # Disegna le piccole linee oblique per l'illusione
+        for y in range(0, height, int(line_spacing / 2)):
+            length = int(10 * element_size_factor)
+            ex = int(x_shifted + length * np.cos(oblique_angle))
+            ey = int(y + length * np.sin(oblique_angle))
+            rr, cc = line(y, x_shifted, ey, ex)
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = 1.0
+            
+            ex = int(x_shifted - length * np.cos(oblique_angle))
+            ey = int(y - length * np.sin(oblique_angle))
+            rr, cc = line(y, x_shifted, ey, ex)
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = 1.0
+            
+    return img
+
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor):
     np.random.seed(seed + frame)
 
@@ -369,8 +418,12 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Y-Junctions":
         img = y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor)
-    elif illusion_type == "Pulsing Grid":
-        img = pulsing_grid_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+    elif illusion_type == "Drifting Spines":
+        img = drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+    elif illusion_type == "Spiral Illusion":
+        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+    elif illusion_type == "Zollner Illusion":
+        img = zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor)
     else:
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor)
     return apply_colors(img, line_color, bg_color)
