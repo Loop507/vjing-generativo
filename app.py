@@ -9,7 +9,6 @@ import os
 import random
 import ffmpeg
 from scipy import ndimage
-from skimage.draw import line, circle, polygon
 
 # Configurazione pagina
 st.set_page_config(page_title="VJing Generativo", layout="wide")
@@ -67,6 +66,94 @@ def analyze_audio(audio_path, duration, fps):
     return {"tempo": tempo, "bass": bass_values, "mid": mid_values, "high": high_values}
 
 # -------------------------------
+# FUNZIONI DI DISEGNO NATIVE
+# -------------------------------
+
+def draw_line_native(img, x0, y0, x1, y1, value=1.0, thickness=1):
+    """Disegna una linea usando algoritmo di Bresenham nativo"""
+    height, width = img.shape
+    
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    
+    x_step = 1 if x0 < x1 else -1
+    y_step = 1 if y0 < y1 else -1
+    
+    error = dx - dy
+    
+    x, y = x0, y0
+    
+    while True:
+        # Disegna punto con thickness
+        for tx in range(-thickness//2, thickness//2 + 1):
+            for ty in range(-thickness//2, thickness//2 + 1):
+                px, py = x + tx, y + ty
+                if 0 <= px < width and 0 <= py < height:
+                    img[py, px] = value
+        
+        if x == x1 and y == y1:
+            break
+            
+        error2 = 2 * error
+        
+        if error2 > -dy:
+            error -= dy
+            x += x_step
+        if error2 < dx:
+            error += dx
+            y += y_step
+
+def draw_circle_native(img, center_x, center_y, radius, value=1.0, filled=True):
+    """Disegna un cerchio usando algoritmo nativo"""
+    height, width = img.shape
+    
+    for y in range(max(0, center_y - radius), min(height, center_y + radius + 1)):
+        for x in range(max(0, center_x - radius), min(width, center_x + radius + 1)):
+            distance = np.sqrt((x - center_x)**2 + (y - center_y)**2)
+            
+            if filled and distance <= radius:
+                img[y, x] = value
+            elif not filled and abs(distance - radius) < 1:
+                img[y, x] = value
+
+def draw_polygon_native(img, vertices, value=1.0):
+    """Disegna un poligono riempito usando scan line"""
+    height, width = img.shape
+    vertices = np.array(vertices)
+    
+    if len(vertices) < 3:
+        return
+    
+    # Trova bounding box
+    min_y = max(0, int(np.min(vertices[:, 1])))
+    max_y = min(height - 1, int(np.max(vertices[:, 1])))
+    
+    # Scan line algorithm
+    for y in range(min_y, max_y + 1):
+        intersections = []
+        
+        for i in range(len(vertices)):
+            j = (i + 1) % len(vertices)
+            
+            y1, y2 = vertices[i][1], vertices[j][1]
+            x1, x2 = vertices[i][0], vertices[j][0]
+            
+            if y1 != y2 and min(y1, y2) <= y < max(y1, y2):
+                x_intersect = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+                intersections.append(x_intersect)
+        
+        intersections.sort()
+        
+        # Riempi tra coppie di intersezioni
+        for i in range(0, len(intersections), 2):
+            if i + 1 < len(intersections):
+                start_x = max(0, int(intersections[i]))
+                end_x = min(width - 1, int(intersections[i + 1]))
+                
+                if start_x <= end_x:
+                    img[y, start_x:end_x + 1] = value
+
+# -------------------------------
 # ILLUSIONI SCIENTIFICHE ACCURATE
 # -------------------------------
 
@@ -97,16 +184,15 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity):
                 [0, triangle_size//2]
             ])
             
-            rotated_vertices = np.array([
-                [v[0]*cos_a - v[1]*sin_a + center_x, v[0]*sin_a + v[1]*cos_a + center_y]
-                for v in vertices
-            ]).astype(int)
+            rotated_vertices = []
+            for v in vertices:
+                new_x = v[0]*cos_a - v[1]*sin_a + center_x
+                new_y = v[0]*sin_a + v[1]*cos_a + center_y
+                rotated_vertices.append([new_x, new_y])
             
             # Disegna triangolo se dentro i bounds
             if all(0 <= v[0] < width and 0 <= v[1] < height for v in rotated_vertices):
-                # Usa skimage polygon per riempire il triangolo
-                rr, cc = polygon(rotated_vertices[:, 1], rotated_vertices[:, 0], (height, width))
-                img[rr, cc] = 1.0
+                draw_polygon_native(img, rotated_vertices, 1.0)
     
     return img
 
@@ -126,18 +212,12 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
         x2, y2 = 0, min(i, height-1)
         
         if x1 >= 0 and y2 >= 0:
-            # Disegna linea usando skimage
-            rr, cc = line(y1, x1, y2, x2)
-            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-            img[rr[valid_idx], cc[valid_idx]] = 1.0
+            # Disegna linea principale
+            draw_line_native(img, x1, y1, x2, y2, 1.0, line_width)
             
             # Bordi di contrasto per amplificare l'illusione
             if line_width > 2:
-                for offset in range(-line_width//2, line_width//2 + 1):
-                    rr_offset = rr + offset
-                    cc_offset = cc + offset
-                    valid_offset = (rr_offset >= 0) & (rr_offset < height) & (cc_offset >= 0) & (cc_offset < width)
-                    img[rr_offset[valid_offset], cc_offset[valid_offset]] = 0.7
+                draw_line_native(img, x1, y1, x2, y2, 0.5, line_width + 2)
     
     # Aggiunta pattern perpendicolari per l'effetto mixed
     perpendicular_offset = frame * 2
@@ -146,9 +226,7 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
         x2, y2 = min(i, width-1), 0
         
         if y1 >= 0 and x2 >= 0:
-            rr, cc = line(y1, x1, y2, x2)
-            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-            img[rr[valid_idx], cc[valid_idx]] = 0.5
+            draw_line_native(img, x1, y1, x2, y2, 0.7, max(1, line_width//2))
     
     return img
 
@@ -205,15 +283,12 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity)
                 end_y = int(center_y + current_radius * np.sin(angle))
                 
                 if 0 <= end_x < width and 0 <= end_y < height:
-                    rr, cc = line(center_y, center_x, end_y, end_x)
-                    valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-                    img[rr[valid_idx], cc[valid_idx]] = 1.0
+                    draw_line_native(img, center_x, center_y, end_x, end_y, 1.0, 2)
             
             # Cerchi concentrici per amplificare l'effetto
             for r in range(current_radius//4, current_radius, current_radius//4):
                 if r > 0:
-                    rr, cc = circle(center_y, center_x, r, (height, width))
-                    img[rr, cc] = 0.7
+                    draw_circle_native(img, center_x, center_y, r, 0.7, filled=False)
     
     return img
 
@@ -304,15 +379,13 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity):
                 # Disegna "spina" o freccia
                 center_x, center_y = x, y + spine_spacing//2
                 
-                if center_y < height:
+                if center_y < height and center_y >= 0:
                     # Corpo della spina (linea verticale)
                     start_y = max(0, center_y - spine_length//2)
                     end_y = min(height-1, center_y + spine_length//2)
                     
                     if start_y < end_y:
-                        rr, cc = line(start_y, center_x, end_y, center_x)
-                        valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-                        img[rr[valid_idx], cc[valid_idx]] = 1.0
+                        draw_line_native(img, center_x, start_y, center_x, end_y, 1.0, 2)
                     
                     # Punte della freccia per amplificare il drift
                     arrow_size = spine_length // 4
@@ -321,24 +394,21 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity):
                         arrow_x1 = max(0, center_x - arrow_size)
                         arrow_y1 = max(0, center_y - spine_length//2 + arrow_size)
                         if arrow_x1 < width and arrow_y1 < height:
-                            rr, cc = line(center_y - spine_length//2, center_x, arrow_y1, arrow_x1)
-                            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-                            img[rr[valid_idx], cc[valid_idx]] = 1.0
+                            draw_line_native(img, center_x, center_y - spine_length//2, 
+                                           arrow_x1, arrow_y1, 1.0, 2)
                         
                         # Freccia destra
                         arrow_x2 = min(width-1, center_x + arrow_size)
                         if arrow_x2 >= 0 and arrow_y1 < height:
-                            rr, cc = line(center_y - spine_length//2, center_x, arrow_y1, arrow_x2)
-                            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-                            img[rr[valid_idx], cc[valid_idx]] = 1.0
+                            draw_line_native(img, center_x, center_y - spine_length//2, 
+                                           arrow_x2, arrow_y1, 1.0, 2)
     
     # Pattern orizzontale per amplificare l'effetto di drift
     for x in range(0, width, spine_spacing//2):
         horizontal_y = int(height//2 + 50 * np.sin(x * 0.05 + drift_offset * 0.1))
         if 0 <= horizontal_y < height:
             radius = max(1, int(3 * high_val * intensity))
-            rr, cc = circle(horizontal_y, x, radius, (height, width))
-            img[rr, cc] = 0.7
+            draw_circle_native(img, x, horizontal_y, radius, 0.7, filled=True)
     
     return img
 
@@ -372,8 +442,7 @@ def spiral_illusion(width, height, frame, audio_features, intensity):
                 
                 # Disegna punto della spirale usando cerchio
                 radius = max(1, int(2 + bass_val * 3))
-                rr, cc = circle(y, x, radius, (height, width))
-                img[rr, cc] = intensity_val
+                draw_circle_native(img, x, y, radius, intensity_val, filled=True)
     
     return img
 
