@@ -3,4 +3,4 @@ librosa
 numpy
 matplotlib
 ffmpeg-python
-imageio[ffmpeg]
+scikit-image
