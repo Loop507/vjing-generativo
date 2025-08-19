@@ -137,38 +137,9 @@ def escape_drawtext(text: str) -> str:
 # ---------------------------------
 
 def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor):
-    img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
-    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
-
-    # Aggiustato il valore base e moltiplicatore per riempire lo schermo
-    line_spacing = int(25 * element_size_factor)
-    rotation_angle = frame * 0.5 + mid_val * 45
-
-    for y in range(0, height + line_spacing, line_spacing):
-        for x in range(0, width + line_spacing, line_spacing):
-            angle_rad = np.radians(rotation_angle + (x+y)*0.1)
-            cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
-            triangle_size = int(20 + bass_val * 30 * intensity)
-            
-            vertices = np.array([
-                [-triangle_size//2, -triangle_size//2],
-                [ triangle_size//2, -triangle_size//2],
-                [ 0,                 triangle_size//2]
-            ])
-            
-            center_x, center_y = x + line_spacing // 2, y + line_spacing // 2
-            
-            rotated = np.array([
-                [v[0]*cos_a - v[1]*sin_a + center_x, v[0]*sin_a + v[1]*cos_a + center_y]
-                for v in vertices
-            ]).astype(int)
-            rr, cc = polygon(rotated[:,1], rotated[:,0], (height, width))
-            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-            img[rr[valid], cc[valid]] = 1.0
-    return img
-
-def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor):
+    """
+    EFFETTO LINEE DIAGONALI (ora associato a 'Illusory Tilt (Line)')
+    """
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
@@ -196,6 +167,40 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
         rr, cc = line(y1, x1, y2, x2)
         valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
         img[rr[valid], cc[valid]] = 0.5
+    return img
+
+def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor):
+    """
+    EFFETTO TRIANGOLI ROTANTI (ora associato a 'Illusory Tilt (Mixed)')
+    """
+    img = np.zeros((height, width), dtype=float)
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    step_size = int(30 * element_size_factor) 
+    rotation_angle = frame * 0.5 + mid_val * 45
+
+    for y in range(0, height, step_size):
+        for x in range(0, width, step_size):
+            angle_rad = np.radians(rotation_angle + (x+y)*0.05)
+            cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+            triangle_size = int(25 + bass_val * 35 * intensity)
+            
+            vertices = np.array([
+                [-triangle_size//2, -triangle_size//2],
+                [ triangle_size//2, -triangle_size//2],
+                [ 0,                 triangle_size//2]
+            ])
+            
+            center_x, center_y = x + step_size // 2, y + step_size // 2
+            
+            rotated = np.array([
+                [v[0]*cos_a - v[1]*sin_a + center_x, v[0]*sin_a + v[1]*cos_a + center_y]
+                for v in vertices
+            ]).astype(int)
+            rr, cc = polygon(rotated[:,1], rotated[:,0], (height, width))
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = 1.0
     return img
 
 def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor):
@@ -421,19 +426,16 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         anim = FuncAnimation(fig, animate, frames=n_frames, blit=True, interval=1000/fps)
         tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
 
-        # ✅ Correzione writer: uso FFMpegWriter
         writer = FFMpegWriter(fps=fps, metadata=dict(artist='Loop507'), bitrate=1800)
         anim.save(tmp_video.name, writer=writer)
         plt.close(fig)
 
-        # 🔥 Merge audio + video con ffmpeg
         output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         video = ffmpeg.input(tmp_video.name)
         audio = ffmpeg.input(tmp_audio.name)
         final = ffmpeg.output(video, audio, output_file.name, vcodec="libx264", acodec="aac", strict="experimental")
         ffmpeg.run(final, overwrite_output=True, quiet=True)
 
-        # Overlay titolo (opzionale) con gestione font cross-platform
         if video_title.strip():
             pos_x = "(w-text_w)/2" if horizontal_position == "Centro" else "20" if horizontal_position == "Sinistra" else "w-text_w-20"
             pos_y = "20" if vertical_position == "Sopra" else "h-text_h-20" if vertical_position == "Sotto" else "(h-text_h)/2"
@@ -471,7 +473,6 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
                 mime="video/mp4",
             )
 
-        # Cleanup
         try:
             os.remove(tmp_audio.name)
             os.remove(tmp_video.name)
