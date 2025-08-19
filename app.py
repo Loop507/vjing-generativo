@@ -473,9 +473,3 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
             - **Algoritmi**: Mather & Takeuchi (Motion), Retinal Slip (Y-Junctions), Phi Motion Effects
             """
         )
-'''
-with open('/mnt/data/app.py', 'w', encoding='utf-8') as f:
-    f.write(code)
-
-print("File scritto in /mnt/data/app.py")
-
