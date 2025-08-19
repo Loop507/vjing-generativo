@@ -1,3 +1,4 @@
+code = r'''
 import streamlit as st
 import librosa
 import numpy as np
@@ -85,7 +86,6 @@ def apply_colors(img, line_color, bg_color):
         colored[:,:,i] = img * line_rgb[i] + (1 - img) * bg_rgb[i]
     return colored
 
-
 def clamp_rect(x1, y1, x2, y2, width, height):
     x1 = int(max(0, min(width-1, x1)))
     x2 = int(max(0, min(width-1, x2)))
@@ -95,34 +95,31 @@ def clamp_rect(x1, y1, x2, y2, width, height):
     if y1 > y2: y1, y2 = y2, y1
     return x1, y1, x2, y2
 
-
 def fill_rect(img, x1, y1, x2, y2, val):
     h, w = img.shape
     x1, y1, x2, y2 = clamp_rect(x1, y1, x2, y2, w, h)
     img[y1:y2+1, x1:x2+1] = val
 
-
 def draw_rect_border(img, x1, y1, x2, y2, val, thickness=1):
     h, w = img.shape
     x1, y1, x2, y2 = clamp_rect(x1, y1, x2, y2, w, h)
     for t in range(thickness):
-        # top
         rr, cc = line(y1+t, x1, y1+t, x2)
         img[rr, cc] = val
-        # bottom
         rr, cc = line(y2-t, x1, y2-t, x2)
         img[rr, cc] = val
-        # left
         rr, cc = line(y1, x1+t, y2, x1+t)
         img[rr, cc] = val
-        # right
         rr, cc = line(y1, x2-t, y2, x2-t)
         img[rr, cc] = val
 
-
 def escape_drawtext(text: str) -> str:
     # Minima escape per drawtext ffmpeg
-    return text.replace("\", "\\").replace(":", "\:").replace("'", "\'")
+    return (
+        text.replace("\\", "\\\\")   # \  -> \\\\
+            .replace(":", "\\:")     # :  -> \:
+            .replace("'", "\\'")     # '  -> \'
+    )
 
 # ---------------------------------
 # ILLUSIONI SCIENTIFICHE
@@ -130,8 +127,8 @@ def escape_drawtext(text: str) -> str:
 
 def illusory_tilt_line_type(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass")]]
-    mid_val = audio_features["mid"][frame % len(audio_features["mid")]]
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
     triangle_size = int(30 + bass_val * 40 * intensity)
     rotation_angle = frame * 0.5 + mid_val * 45
@@ -150,16 +147,15 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity):
                 [v[0]*cos_a - v[1]*sin_a + center_x, v[0]*sin_a + v[1]*cos_a + center_y]
                 for v in vertices
             ]).astype(int)
-            if np.all((rotated[:,0] >= 0) & (rotated[:,0] < width) & (rotated[:,1] >= 0) & (rotated[:,1] < height)):
-                rr, cc = polygon(rotated[:,1], rotated[:,0], (height, width))
-                img[rr, cc] = 1.0
+            rr, cc = polygon(rotated[:,1], rotated[:,0], (height, width))
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = 1.0
     return img
-
 
 def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass")]]
-    high_val = audio_features["high"][frame % len(audio_features["high")]]
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
 
     line_spacing = int(20 + bass_val * 30)
     line_width = max(1, int(2 + high_val * 8 * intensity))
@@ -186,11 +182,10 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
         img[rr[valid], cc[valid]] = 0.5
     return img
 
-
 def illusory_tilt_edge_type(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    mid_val = audio_features["mid"][frame % len(audio_features["mid")]]
-    high_val = audio_features["high"][frame % len(audio_features["high")]]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
 
     square_size = int(40 + mid_val * 60 * intensity)
     edge_width = max(1, int(1 + high_val * 4))
@@ -206,10 +201,9 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity):
                 img[end_y-edge_width:end_y, x:end_x] = 1.0 - fill_value
     return img
 
-
 def illusory_motion_mather_line(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass")]]
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     tempo_factor = audio_features["tempo"] / 120.0
 
     centers = [(width//4, height//4), (3*width//4, height//4),
@@ -231,11 +225,10 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity)
             img[rr, cc] = 0.7
     return img
 
-
 def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    mid_val = audio_features["mid"][frame % len(audio_features["mid")]]
-    high_val = audio_features["high"][frame % len(audio_features["high")]]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
 
     element_size = int(25 + mid_val * 35 * intensity)
     phase = frame * 0.2
@@ -253,11 +246,10 @@ def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensi
                 draw_rect_border(img, x, y, x2, y2, 0.8, thickness=2)
     return img
 
-
 def y_junctions_illusion(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass")]]
-    mid_val = audio_features["mid"][frame % len(audio_features["mid")]]
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
     square_size = int(30 + bass_val * 40 * intensity)
     lateral_shift = int(frame * 0.5 * mid_val * intensity) % max(1, square_size)
@@ -268,10 +260,8 @@ def y_junctions_illusion(width, height, frame, audio_features, intensity):
             if 0 <= x < width:
                 end_x, end_y = min(x + square_size, width), min(y + square_size, height)
                 img[y:end_y, x:end_x] = 1.0 if fill else 0.0
-            # Y-junction agli incroci
-            if x > 0 and y > 0 and x < width and y < height:
+            if 0 < x < width and 0 < y < height:
                 jx, jy = x, y
-                # tre segmenti che formano una Y (spessore 2 via offset)
                 for d in (-1, 0, 1):
                     rr, cc = line(jy-5, jx+d, jy+5, jx+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
@@ -284,10 +274,9 @@ def y_junctions_illusion(width, height, frame, audio_features, intensity):
                     img[rr[valid], cc[valid]] = 0.5
     return img
 
-
 def drifting_spines_illusion(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    high_val = audio_features["high"][frame % len(audio_features["high")]]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
     tempo_factor = audio_features["tempo"] / 120.0
 
     drift_speed = max(0.01, tempo_factor * intensity)
@@ -322,11 +311,10 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity):
             img[rr, cc] = 0.7
     return img
 
-
 def spiral_illusion(width, height, frame, audio_features, intensity):
     img = np.zeros((height, width), dtype=float)
-    bass_val = audio_features["bass"][frame % len(audio_features["bass")]]
-    mid_val = audio_features["mid"][frame % len(audio_features["mid")]]
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
     cx, cy = width // 2, height // 2
     max_radius = min(width, height) // 2
@@ -346,7 +334,6 @@ def spiral_illusion(width, height, frame, audio_features, intensity):
                 rr, cc = disk((y, x), radius, shape=(height, width))
                 img[rr, cc] = intensity_val
     return img
-
 
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed):
     np.random.seed(seed + frame)
@@ -425,7 +412,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
         video = ffmpeg.input(tmp_video.name)
         audio = ffmpeg.input(tmp_audio.name)
-        final = ffmpeg.output(video, audio, output_file.name, vcodec="libx264", acodec="aac", shortest=None, strict="experimental")
+        final = ffmpeg.output(video, audio, output_file.name, vcodec="libx264", acodec="aac", strict="experimental")
         ffmpeg.run(final, overwrite_output=True, quiet=True)
 
         # Overlay titolo (opzionale) con gestione font cross-platform
@@ -437,7 +424,6 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
                 "Sinistra": "20:(h-text_h)/2",
                 "Centro": "(w-text_w)/2:(h-text_h)/2"
             }
-            # Prova alcuni font noti; se non trovati, omette fontfile.
             candidate_fonts = [
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "/Library/Fonts/Arial.ttf",
@@ -488,3 +474,9 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
             - **Algoritmi**: Mather & Takeuchi (Motion), Retinal Slip (Y-Junctions), Phi Motion Effects
             """
         )
+'''
+with open('/mnt/data/app.py', 'w', encoding='utf-8') as f:
+    f.write(code)
+
+print("File scritto in /mnt/data/app.py")
+
