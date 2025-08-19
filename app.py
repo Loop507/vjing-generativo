@@ -35,12 +35,18 @@ illusion_type = st.sidebar.selectbox(
     ]
 )
 
-video_title = st.text_input("📝 Titolo del video", "Visual Synthesis")
-st.sidebar.subheader("📍 Posizione Titolo")
+st.sidebar.subheader("🎨 Controlli Illusione")
+intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
+element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
+
+st.sidebar.subheader("📝 Titolo Video")
+video_title = st.text_input("Testo del titolo", "Visual Synthesis")
+font_size = st.sidebar.slider("Grandezza carattere", 20, 100, 48, 2)
 vertical_position = st.sidebar.selectbox("Posizione verticale", ["Sopra", "Sotto", "Centro"])
 horizontal_position = st.sidebar.selectbox("Posizione orizzontale", ["Sinistra", "Destra", "Centro"])
+
 aspect_ratio = st.selectbox("📺 Formato video", ["16:9", "1:1", "9:16"])
-intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
+
 
 # ---------------------------------
 # ANALISI AUDIO
@@ -130,24 +136,29 @@ def escape_drawtext(text: str) -> str:
 # ILLUSIONI SCIENTIFICHE
 # ---------------------------------
 
-def illusory_tilt_line_type(width, height, frame, audio_features, intensity):
+def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
-    triangle_size = int(30 + bass_val * 40 * intensity)
+    # Aggiustato il valore base e moltiplicatore per riempire lo schermo
+    line_spacing = int(25 * element_size_factor)
     rotation_angle = frame * 0.5 + mid_val * 45
 
-    for y in range(0, height, triangle_size * 2):
-        for x in range(0, width, triangle_size * 2):
-            center_x, center_y = x + triangle_size, y + triangle_size
+    for y in range(0, height + line_spacing, line_spacing):
+        for x in range(0, width + line_spacing, line_spacing):
             angle_rad = np.radians(rotation_angle + (x+y)*0.1)
             cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+            triangle_size = int(20 + bass_val * 30 * intensity)
+            
             vertices = np.array([
                 [-triangle_size//2, -triangle_size//2],
                 [ triangle_size//2, -triangle_size//2],
                 [ 0,                 triangle_size//2]
             ])
+            
+            center_x, center_y = x + line_spacing // 2, y + line_spacing // 2
+            
             rotated = np.array([
                 [v[0]*cos_a - v[1]*sin_a + center_x, v[0]*sin_a + v[1]*cos_a + center_y]
                 for v in vertices
@@ -157,12 +168,12 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity):
             img[rr[valid], cc[valid]] = 1.0
     return img
 
-def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
+def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
-    line_spacing = int(20 + bass_val * 30)
+    line_spacing = int(20 + bass_val * 30 * element_size_factor)
     line_width = max(1, int(2 + high_val * 8 * intensity))
 
     for i in range(0, width + height, line_spacing):
@@ -187,12 +198,12 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
         img[rr[valid], cc[valid]] = 0.5
     return img
 
-def illusory_tilt_edge_type(width, height, frame, audio_features, intensity):
+def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
-    square_size = int(40 + mid_val * 60 * intensity)
+    square_size = int(40 + mid_val * 60 * intensity * element_size_factor)
     edge_width = max(1, int(1 + high_val * 4))
 
     for y in range(0, height, square_size):
@@ -206,7 +217,7 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity):
                 img[end_y-edge_width:end_y, x:end_x] = 1.0 - fill_value
     return img
 
-def illusory_motion_mather_line(width, height, frame, audio_features, intensity):
+def illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     tempo_factor = audio_features["tempo"] / 120.0
@@ -215,7 +226,7 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity)
                (width//4, 3*height//4), (3*width//4, 3*height//4)]
 
     for cx, cy in centers:
-        max_radius = min(width, height) // 6
+        max_radius = min(width, height) // 6 * element_size_factor
         current_radius = int(max_radius * (0.5 + 0.5 * bass_val * intensity))
         num_spokes = int(8 + tempo_factor * 4)
         for i in range(num_spokes):
@@ -225,17 +236,17 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity)
             rr, cc = line(cy, cx, ey, ex)
             valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
             img[rr[valid], cc[valid]] = 1.0
-        for r in range(max(1, current_radius//4), current_radius, max(1, current_radius//4)):
+        for r in range(max(1, int(current_radius//4*element_size_factor)), current_radius, max(1, int(current_radius//4*element_size_factor))):
             rr, cc = disk((cy, cx), r, shape=(height, width))
             img[rr, cc] = 0.7
     return img
 
-def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity):
+def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
-    element_size = int(25 + mid_val * 35 * intensity)
+    element_size = int(25 + mid_val * 35 * intensity * element_size_factor)
     phase = frame * 0.2
 
     for y in range(0, height, element_size):
@@ -251,47 +262,41 @@ def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensi
                 draw_rect_border(img, x, y, x2, y2, 0.8, thickness=2)
     return img
 
-def y_junctions_illusion(width, height, frame, audio_features, intensity):
+def y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
-    square_size = int(30 + bass_val * 40 * intensity)
+    square_size = int(30 * element_size_factor + bass_val * 40 * intensity)
     lateral_shift = int((frame * 0.5 * mid_val * intensity) % max(1, square_size))
 
-    # Aggiustamento per mantenere l'illusione all'interno dello schermo
-    # Iniziamo la griglia da una posizione che compensi lo shift
     start_x = -lateral_shift
     
     for y in range(0, height, square_size):
         for x in range(start_x, width + square_size, square_size):
             fill = (x//square_size + y//square_size) % 2 == 0
             
-            # Solo disegna se il quadrato è parzialmente o totalmente visibile
             end_x, end_y = min(x + square_size, width), min(y + square_size, height)
             if end_x > 0 and end_y > 0 and x < width and y < height:
                 x1 = max(0, x)
                 y1 = max(0, y)
                 img[y1:end_y, x1:end_x] = 1.0 if fill else 0.0
             
-            # Disegna le Y-junctions solo dove la griglia si incontra
             if x > 0 and y > 0 and x < width and y < height:
                 jx, jy = x, y
                 for d in (-1, 0, 1):
-                    # Linee orizzontali e verticali
                     rr, cc = line(jy-5, jx+d, jy+5, jx+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
                     rr, cc = line(jy+d, jx-5, jy+d, jx+5)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
-                    # Linee diagonali
                     rr, cc = line(jy-3, jx-3+d, jy+3, jx+3+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
     return img
 
-def drifting_spines_illusion(width, height, frame, audio_features, intensity):
+def drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     high_val = audio_features["high"][frame % len(audio_features["high"])]
     tempo_factor = audio_features["tempo"] / 120.0
@@ -299,8 +304,8 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity):
     drift_speed = max(0.01, tempo_factor * intensity)
     drift_offset = (frame * drift_speed) % 100
 
-    spine_spacing = int(40 + high_val * 30)
-    spine_length = int(20 + high_val * 25 * intensity)
+    spine_spacing = int(40 * element_size_factor + high_val * 30)
+    spine_length = int(20 * element_size_factor + high_val * 25 * intensity)
 
     for y in range(0, height, spine_spacing):
         for x in range(int(-drift_offset), width + spine_spacing, spine_spacing):
@@ -328,14 +333,14 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity):
             img[rr, cc] = 0.7
     return img
 
-def spiral_illusion(width, height, frame, audio_features, intensity):
+def spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
     cx, cy = width // 2, height // 2
     max_radius = min(width, height) // 2
-    spiral_tightness = 0.1 + bass_val * 0.2 * intensity
+    spiral_tightness = 0.1 * element_size_factor + bass_val * 0.2 * intensity
     rotation_speed = frame * 0.05 + mid_val * 0.1
 
     num_arms = 3
@@ -352,25 +357,25 @@ def spiral_illusion(width, height, frame, audio_features, intensity):
                 img[rr, cc] = intensity_val
     return img
 
-def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed):
+def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor):
     np.random.seed(seed + frame)
 
     if illusion_type == "Illusory Tilt (Line)":
-        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity)
+        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Illusory Tilt (Mixed)":
-        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity)
+        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Illusory Tilt (Edge)":
-        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity)
+        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Illusory Motion (Mather)":
-        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity)
+        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Illusory Motion (Takeuchi)":
-        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity)
+        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Y-Junctions":
-        img = y_junctions_illusion(width, height, frame, audio_features, intensity)
+        img = y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor)
     elif illusion_type == "Drifting Spines":
-        img = drifting_spines_illusion(width, height, frame, audio_features, intensity)
+        img = drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor)
     else:
-        img = spiral_illusion(width, height, frame, audio_features, intensity)
+        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor)
     return apply_colors(img, line_color, bg_color)
 
 # ---------------------------------
@@ -409,7 +414,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         im = ax.imshow(np.zeros((size[1], size[0], 3)), aspect="equal")
 
         def animate(frame):
-            colored = generate_illusion_frame(size[0], size[1], frame, audio_features, intensity, illusion_type, seed)
+            colored = generate_illusion_frame(size[0], size[1], frame, audio_features, intensity, illusion_type, seed, element_size_factor)
             im.set_array(colored)
             return [im]
 
@@ -430,7 +435,6 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
 
         # Overlay titolo (opzionale) con gestione font cross-platform
         if video_title.strip():
-            # Nuova logica per posizionamento x e y
             pos_x = "(w-text_w)/2" if horizontal_position == "Centro" else "20" if horizontal_position == "Sinistra" else "w-text_w-20"
             pos_y = "20" if vertical_position == "Sopra" else "h-text_h-20" if vertical_position == "Sotto" else "(h-text_h)/2"
 
@@ -442,7 +446,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
             ]
             fontfile = next((p for p in candidate_fonts if os.path.exists(p)), None)
             text_escaped = escape_drawtext(video_title)
-            drawtext_args = f"text='{text_escaped}':fontcolor=white:fontsize=48:x={pos_x}:y={pos_y}"
+            drawtext_args = f"text='{text_escaped}':fontcolor=white:fontsize={font_size}:x={pos_x}:y={pos_y}"
             if fontfile:
                 drawtext_args += f":fontfile={fontfile}"
 
