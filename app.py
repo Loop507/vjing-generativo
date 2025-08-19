@@ -28,11 +28,17 @@ bg_color = st.sidebar.color_picker("Colore sfondo", "#000000")
 
 illusion_type = st.sidebar.selectbox(
     "🌀 Tipo di Illusione",
-    ["Illusory Tilt", "Illusory Motion", "Y-Junctions", "Drifting Spines", "Spiral Illusion"]
+    [
+        "Illusory Tilt (Line)", "Illusory Tilt (Mixed)", "Illusory Tilt (Edge)",
+        "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
+        "Y-Junctions", "Drifting Spines", "Spiral Illusion"
+    ]
 )
 
 video_title = st.text_input("📝 Titolo del video", "Visual Synthesis")
-position = st.selectbox("📍 Posizione del titolo", ["Sopra", "Sotto", "Destra", "Sinistra", "Centro"])
+st.sidebar.subheader("📍 Posizione Titolo")
+vertical_position = st.sidebar.selectbox("Posizione verticale", ["Sopra", "Sotto", "Centro"])
+horizontal_position = st.sidebar.selectbox("Posizione orizzontale", ["Sinistra", "Destra", "Centro"])
 aspect_ratio = st.selectbox("📺 Formato video", ["16:9", "1:1", "9:16"])
 intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
 
@@ -251,23 +257,35 @@ def y_junctions_illusion(width, height, frame, audio_features, intensity):
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
     square_size = int(30 + bass_val * 40 * intensity)
-    lateral_shift = int(frame * 0.5 * mid_val * intensity) % max(1, square_size)
+    lateral_shift = int((frame * 0.5 * mid_val * intensity) % max(1, square_size))
 
+    # Aggiustamento per mantenere l'illusione all'interno dello schermo
+    # Iniziamo la griglia da una posizione che compensi lo shift
+    start_x = -lateral_shift
+    
     for y in range(0, height, square_size):
-        for x in range(-lateral_shift, width + square_size, square_size):
+        for x in range(start_x, width + square_size, square_size):
             fill = (x//square_size + y//square_size) % 2 == 0
-            if 0 <= x < width:
-                end_x, end_y = min(x + square_size, width), min(y + square_size, height)
-                img[y:end_y, x:end_x] = 1.0 if fill else 0.0
-            if 0 < x < width and 0 < y < height:
+            
+            # Solo disegna se il quadrato è parzialmente o totalmente visibile
+            end_x, end_y = min(x + square_size, width), min(y + square_size, height)
+            if end_x > 0 and end_y > 0 and x < width and y < height:
+                x1 = max(0, x)
+                y1 = max(0, y)
+                img[y1:end_y, x1:end_x] = 1.0 if fill else 0.0
+            
+            # Disegna le Y-junctions solo dove la griglia si incontra
+            if x > 0 and y > 0 and x < width and y < height:
                 jx, jy = x, y
                 for d in (-1, 0, 1):
+                    # Linee orizzontali e verticali
                     rr, cc = line(jy-5, jx+d, jy+5, jx+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
                     rr, cc = line(jy+d, jx-5, jy+d, jx+5)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
+                    # Linee diagonali
                     rr, cc = line(jy-3, jx-3+d, jy+3, jx+3+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
@@ -336,21 +354,17 @@ def spiral_illusion(width, height, frame, audio_features, intensity):
 
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed):
     np.random.seed(seed + frame)
-    tempo_factor = max(0.5, audio_features["tempo"] / 120.0)
-    subtype_cycle = int(frame / (30 * tempo_factor)) % 3
 
-    if illusion_type == "Illusory Tilt":
-        if subtype_cycle == 0:
-            img = illusory_tilt_line_type(width, height, frame, audio_features, intensity)
-        elif subtype_cycle == 1:
-            img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity)
-        else:
-            img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity)
-    elif illusion_type == "Illusory Motion":
-        if subtype_cycle == 0:
-            img = illusory_motion_mather_line(width, height, frame, audio_features, intensity)
-        else:
-            img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity)
+    if illusion_type == "Illusory Tilt (Line)":
+        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity)
+    elif illusion_type == "Illusory Tilt (Mixed)":
+        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity)
+    elif illusion_type == "Illusory Tilt (Edge)":
+        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity)
+    elif illusion_type == "Illusory Motion (Mather)":
+        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity)
+    elif illusion_type == "Illusory Motion (Takeuchi)":
+        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity)
     elif illusion_type == "Y-Junctions":
         img = y_junctions_illusion(width, height, frame, audio_features, intensity)
     elif illusion_type == "Drifting Spines":
@@ -416,13 +430,10 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
 
         # Overlay titolo (opzionale) con gestione font cross-platform
         if video_title.strip():
-            pos_map = {
-                "Sopra": "(w-text_w)/2:20",
-                "Sotto": "(w-text_w)/2:h-text_h-20",
-                "Destra": "w-text_w-20:(h-text_h)/2",
-                "Sinistra": "20:(h-text_h)/2",
-                "Centro": "(w-text_w)/2:(h-text_h)/2"
-            }
+            # Nuova logica per posizionamento x e y
+            pos_x = "(w-text_w)/2" if horizontal_position == "Centro" else "20" if horizontal_position == "Sinistra" else "w-text_w-20"
+            pos_y = "20" if vertical_position == "Sopra" else "h-text_h-20" if vertical_position == "Sotto" else "(h-text_h)/2"
+
             candidate_fonts = [
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "/Library/Fonts/Arial.ttf",
@@ -431,7 +442,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
             ]
             fontfile = next((p for p in candidate_fonts if os.path.exists(p)), None)
             text_escaped = escape_drawtext(video_title)
-            drawtext_args = f"text='{text_escaped}':fontcolor=white:fontsize=48:x={pos_map[position].split(':')[0]}:y={pos_map[position].split(':')[1]}"
+            drawtext_args = f"text='{text_escaped}':fontcolor=white:fontsize=48:x={pos_x}:y={pos_y}"
             if fontfile:
                 drawtext_args += f":fontfile={fontfile}"
 
