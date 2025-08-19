@@ -40,7 +40,7 @@ intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
 element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
 
 st.sidebar.subheader("📝 Titolo Video")
-video_title = st.text_input("Testo del titolo", "Visual Synthesis")
+video_title = st.text_input("Testo del titolo", "")
 font_size = st.sidebar.slider("Grandezza carattere", 20, 100, 48, 2)
 vertical_position = st.sidebar.selectbox("Posizione verticale", ["Sopra", "Sotto", "Centro"])
 horizontal_position = st.sidebar.selectbox("Posizione orizzontale", ["Sinistra", "Destra", "Centro"])
@@ -138,40 +138,42 @@ def escape_drawtext(text: str) -> str:
 
 def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor):
     """
-    EFFETTO LINEE DIAGONALI (ora associato a 'Illusory Tilt (Line)')
+    EFFETTO LINEE DIAGONALI - Corretto per riempire l'intero schermo
     """
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
+    
+    line_spacing = int(25 * element_size_factor + bass_val * 15 * intensity)
+    line_width = max(1, int(1 + high_val * 4))
 
-    line_spacing = int(20 + bass_val * 30 * element_size_factor)
-    line_width = max(1, int(2 + high_val * 8 * intensity))
+    # Disegna linee diagonali da in basso a sinistra a in alto a destra
+    for i in range(-height, width):
+        x1 = max(0, i)
+        y1 = max(0, -i)
+        x2 = min(width - 1, i + height - 1)
+        y2 = min(height - 1, -i + width - 1)
+        if (i % line_spacing) == 0:
+            rr, cc = line(y1, x1, y2, x2)
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = 1.0
 
-    for i in range(0, width + height, line_spacing):
-        x1, y1 = min(i, width-1), 0
-        x2, y2 = 0, min(i, height-1)
-        rr, cc = line(y1, x1, y2, x2)
-        valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-        img[rr[valid], cc[valid]] = 1.0
-        if line_width > 2:
-            for offset in range(-line_width//2, line_width//2 + 1):
-                rr_o = rr + offset
-                cc_o = cc + offset
-                valid_o = (rr_o >= 0) & (rr_o < height) & (cc_o >= 0) & (cc_o < width)
-                img[rr_o[valid_o], cc_o[valid_o]] = 0.7
-
-    perpendicular_offset = frame * 2
-    for i in range(perpendicular_offset, width + height, line_spacing * 2):
-        x1, y1 = 0, min(i, height-1)
-        x2, y2 = min(i, width-1), 0
-        rr, cc = line(y1, x1, y2, x2)
-        valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-        img[rr[valid], cc[valid]] = 0.5
+    # Disegna linee diagonali perpendicolari da in alto a sinistra a in basso a destra
+    perpendicular_offset = int(frame * 2)
+    for i in range(-width - perpendicular_offset, height + perpendicular_offset, line_spacing):
+        x1 = max(0, i)
+        y1 = min(height - 1, i + width - 1)
+        x2 = min(width - 1, i + width - 1)
+        y2 = max(0, i)
+        if (i % line_spacing) == 0:
+            rr, cc = line(y1, x1, y2, x2)
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = 0.5
     return img
 
 def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor):
     """
-    EFFETTO TRIANGOLI ROTANTI (ora associato a 'Illusory Tilt (Mixed)')
+    EFFETTO TRIANGOLI ROTANTI
     """
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
