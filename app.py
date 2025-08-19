@@ -3,12 +3,13 @@ import librosa
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from matplotlib.patches import Polygon
 import tempfile
 import os
 import random
 import ffmpeg
 from scipy import ndimage
-import cv2
+from skimage.draw import line, circle, polygon
 
 # Configurazione pagina
 st.set_page_config(page_title="VJing Generativo", layout="wide")
@@ -103,7 +104,9 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity):
             
             # Disegna triangolo se dentro i bounds
             if all(0 <= v[0] < width and 0 <= v[1] < height for v in rotated_vertices):
-                cv2.fillPoly(img, [rotated_vertices], 1.0)
+                # Usa skimage polygon per riempire il triangolo
+                rr, cc = polygon(rotated_vertices[:, 1], rotated_vertices[:, 0], (height, width))
+                img[rr, cc] = 1.0
     
     return img
 
@@ -119,26 +122,33 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity):
     
     for i in range(0, width + height, line_spacing):
         # Linee diagonali principali
-        x1, y1 = i, 0
-        x2, y2 = 0, i
+        x1, y1 = min(i, width-1), 0
+        x2, y2 = 0, min(i, height-1)
         
-        if x1 < width and y2 < height:
-            # Linea principale
-            cv2.line(img, (x1, y1), (x2, y2), 1.0, line_width)
+        if x1 >= 0 and y2 >= 0:
+            # Disegna linea usando skimage
+            rr, cc = line(y1, x1, y2, x2)
+            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid_idx], cc[valid_idx]] = 1.0
             
             # Bordi di contrasto per amplificare l'illusione
             if line_width > 2:
-                cv2.line(img, (x1, y1), (x2, y2), 0.5, line_width + 2)
-                cv2.line(img, (x1, y1), (x2, y2), 1.0, line_width)
+                for offset in range(-line_width//2, line_width//2 + 1):
+                    rr_offset = rr + offset
+                    cc_offset = cc + offset
+                    valid_offset = (rr_offset >= 0) & (rr_offset < height) & (cc_offset >= 0) & (cc_offset < width)
+                    img[rr_offset[valid_offset], cc_offset[valid_offset]] = 0.7
     
     # Aggiunta pattern perpendicolari per l'effetto mixed
     perpendicular_offset = frame * 2
     for i in range(perpendicular_offset, width + height, line_spacing * 2):
-        x1, y1 = 0, i
-        x2, y2 = i, 0
+        x1, y1 = 0, min(i, height-1)
+        x2, y2 = min(i, width-1), 0
         
-        if y1 < height and x2 < width:
-            cv2.line(img, (x1, y1), (x2, y2), 0.7, max(1, line_width//2))
+        if y1 >= 0 and x2 >= 0:
+            rr, cc = line(y1, x1, y2, x2)
+            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid_idx], cc[valid_idx]] = 0.5
     
     return img
 
@@ -180,25 +190,30 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity)
                (width//4, 3*height//4), (3*width//4, 3*height//4)]
     
     for center_x, center_y in centers:
-        # Raggio dinamico basato sull'audio
-        max_radius = min(width, height) // 4
-        current_radius = int(max_radius * (0.5 + 0.5 * bass_val * intensity))
-        
-        # Pattern radiali per effetto phi
-        num_spokes = int(8 + tempo_factor * 4)
-        for i in range(num_spokes):
-            angle = (2 * np.pi * i / num_spokes) + (frame * 0.1 * tempo_factor)
+        if center_x < width and center_y < height:
+            # Raggio dinamico basato sull'audio
+            max_radius = min(width, height) // 6
+            current_radius = int(max_radius * (0.5 + 0.5 * bass_val * intensity))
             
-            # Linee radiali che creano movimento illusorio
-            end_x = int(center_x + current_radius * np.cos(angle))
-            end_y = int(center_y + current_radius * np.sin(angle))
+            # Pattern radiali per effetto phi
+            num_spokes = int(8 + tempo_factor * 4)
+            for i in range(num_spokes):
+                angle = (2 * np.pi * i / num_spokes) + (frame * 0.1 * tempo_factor)
+                
+                # Linee radiali che creano movimento illusorio
+                end_x = int(center_x + current_radius * np.cos(angle))
+                end_y = int(center_y + current_radius * np.sin(angle))
+                
+                if 0 <= end_x < width and 0 <= end_y < height:
+                    rr, cc = line(center_y, center_x, end_y, end_x)
+                    valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+                    img[rr[valid_idx], cc[valid_idx]] = 1.0
             
-            if 0 <= end_x < width and 0 <= end_y < height:
-                cv2.line(img, (center_x, center_y), (end_x, end_y), 1.0, 2)
-        
-        # Cerchi concentrici per amplificare l'effetto
-        for r in range(current_radius//4, current_radius, current_radius//4):
-            cv2.circle(img, (center_x, center_y), r, 0.7, 1)
+            # Cerchi concentrici per amplificare l'effetto
+            for r in range(current_radius//4, current_radius, current_radius//4):
+                if r > 0:
+                    rr, cc = circle(center_y, center_x, r, (height, width))
+                    img[rr, cc] = 0.7
     
     return img
 
@@ -290,22 +305,40 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity):
                 center_x, center_y = x, y + spine_spacing//2
                 
                 if center_y < height:
-                    # Corpo della spina
-                    cv2.line(img, (center_x, center_y - spine_length//2), 
-                            (center_x, center_y + spine_length//2), 1.0, 2)
+                    # Corpo della spina (linea verticale)
+                    start_y = max(0, center_y - spine_length//2)
+                    end_y = min(height-1, center_y + spine_length//2)
+                    
+                    if start_y < end_y:
+                        rr, cc = line(start_y, center_x, end_y, center_x)
+                        valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+                        img[rr[valid_idx], cc[valid_idx]] = 1.0
                     
                     # Punte della freccia per amplificare il drift
                     arrow_size = spine_length // 4
-                    cv2.line(img, (center_x, center_y - spine_length//2),
-                            (center_x - arrow_size, center_y - spine_length//2 + arrow_size), 1.0, 2)
-                    cv2.line(img, (center_x, center_y - spine_length//2),
-                            (center_x + arrow_size, center_y - spine_length//2 + arrow_size), 1.0, 2)
+                    if arrow_size > 0:
+                        # Freccia sinistra
+                        arrow_x1 = max(0, center_x - arrow_size)
+                        arrow_y1 = max(0, center_y - spine_length//2 + arrow_size)
+                        if arrow_x1 < width and arrow_y1 < height:
+                            rr, cc = line(center_y - spine_length//2, center_x, arrow_y1, arrow_x1)
+                            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+                            img[rr[valid_idx], cc[valid_idx]] = 1.0
+                        
+                        # Freccia destra
+                        arrow_x2 = min(width-1, center_x + arrow_size)
+                        if arrow_x2 >= 0 and arrow_y1 < height:
+                            rr, cc = line(center_y - spine_length//2, center_x, arrow_y1, arrow_x2)
+                            valid_idx = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+                            img[rr[valid_idx], cc[valid_idx]] = 1.0
     
     # Pattern orizzontale per amplificare l'effetto di drift
     for x in range(0, width, spine_spacing//2):
         horizontal_y = int(height//2 + 50 * np.sin(x * 0.05 + drift_offset * 0.1))
         if 0 <= horizontal_y < height:
-            cv2.circle(img, (x, horizontal_y), max(1, int(3 * high_val * intensity)), 0.7, -1)
+            radius = max(1, int(3 * high_val * intensity))
+            rr, cc = circle(horizontal_y, x, radius, (height, width))
+            img[rr, cc] = 0.7
     
     return img
 
@@ -337,9 +370,10 @@ def spiral_illusion(width, height, frame, audio_features, intensity):
                 # Intensità variabile per effetto di profondità
                 intensity_val = 0.8 + 0.2 * np.sin(r * 0.1 + rotation_speed)
                 
-                # Disegna punto della spirale
+                # Disegna punto della spirale usando cerchio
                 radius = max(1, int(2 + bass_val * 3))
-                cv2.circle(img, (x, y), radius, intensity_val, -1)
+                rr, cc = circle(y, x, radius, (height, width))
+                img[rr, cc] = intensity_val
     
     return img
 
