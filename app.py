@@ -35,9 +35,44 @@ illusion_type = st.sidebar.selectbox(
     ]
 )
 
-st.sidebar.subheader("🎨 Controlli Illusione")
-intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
-element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
+# ---------------------------------
+# NUOVA SEZIONE KEYFRAME SEMPLIFICATI
+# ---------------------------------
+st.sidebar.subheader("🎥 Sequenza Keyframe (avanzato)")
+use_keyframes = st.sidebar.checkbox("Usa Sequenza Keyframe", value=False)
+
+if not use_keyframes:
+    st.sidebar.subheader("🎨 Controlli Illusione")
+    intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
+    element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
+else:
+    st.sidebar.caption("Definisci i keyframe (tempo_in_secondi:valore).")
+    st.sidebar.info("Esempio:\n0:1.0\n10:1.5\n20:0.8")
+
+    intensity_str = st.sidebar.text_area("Keyframes Intensità", height=100)
+    size_str = st.sidebar.text_area("Keyframes Dimensione", height=100)
+    
+    # Valori di fallback se non si usano i keyframe
+    intensity = 1.0
+    element_size_factor = 1.0
+
+    def parse_keyframes(keyframe_string):
+        keyframes_dict = {}
+        for line in keyframe_string.split('\n'):
+            line = line.strip()
+            if line:
+                try:
+                    time_str, value_str = line.split(':')
+                    time = float(time_str.strip())
+                    value = float(value_str.strip())
+                    keyframes_dict[time] = value
+                except ValueError:
+                    st.sidebar.warning(f"Formato keyframe non valido: '{line}'. Ignorato.")
+        return keyframes_dict
+
+    keyframes_intensity = parse_keyframes(intensity_str)
+    keyframes_size = parse_keyframes(size_str)
+
 
 st.sidebar.subheader("📝 Titolo Video")
 video_title = st.text_input("Testo del titolo", "")
@@ -428,6 +463,34 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor)
     return apply_colors(img, line_color, bg_color)
 
+
+# ---------------------------------
+# LOGICA DI INTERPOLAZIONE
+# ---------------------------------
+def interpolate_value(time, keyframes):
+    times = sorted(keyframes.keys())
+    if not times:
+        return None
+    if time <= times[0]:
+        return keyframes[times[0]]
+    if time >= times[-1]:
+        return keyframes[times[-1]]
+
+    t1, v1 = None, None
+    t2, v2 = None, None
+    for i in range(len(times) - 1):
+        if times[i] <= time < times[i+1]:
+            t1, v1 = times[i], keyframes[times[i]]
+            t2, v2 = times[i+1], keyframes[times[i+1]]
+            break
+    
+    if t1 is not None and t2 is not None and t1 != t2:
+        t = (time - t1) / (t2 - t1)
+        return v1 + (v2 - v1) * t
+    else:
+        return v1
+
+
 # ---------------------------------
 # MAIN
 # ---------------------------------
@@ -464,9 +527,29 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         im = ax.imshow(np.zeros((size[1], size[0], 3)), aspect="equal")
 
         def animate(frame):
-            colored = generate_illusion_frame(size[0], size[1], frame, audio_features, intensity, illusion_type, seed, element_size_factor)
+            current_time = frame / fps
+            current_intensity = intensity
+            current_size_factor = element_size_factor
+            
+            if use_keyframes:
+                if keyframes_intensity:
+                    interpolated_intensity = interpolate_value(current_time, keyframes_intensity)
+                    if interpolated_intensity is not None:
+                        current_intensity = interpolated_intensity
+                if keyframes_size:
+                    interpolated_size = interpolate_value(current_time, keyframes_size)
+                    if interpolated_size is not None:
+                        current_size_factor = interpolated_size
+
+            current_illusion_type = illusion_type
+
+            colored = generate_illusion_frame(
+                size[0], size[1], frame, audio_features,
+                current_intensity, current_illusion_type, seed, current_size_factor
+            )
             im.set_array(colored)
             return [im]
+
 
         anim = FuncAnimation(fig, animate, frames=n_frames, blit=True, interval=1000/fps)
         tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
