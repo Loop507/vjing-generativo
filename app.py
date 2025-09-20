@@ -47,7 +47,7 @@ keyframes_elements = {}
 
 if use_keyframes:
     st.sidebar.caption("Definisci i keyframe (tempo_in_secondi:valore).")
-    st.sidebar.info("Esempio:\n0:10\n10:15\n20:8")
+    st.sidebar.info("Esempio:\n0:1.0\n10:1.5\n20:0.8")
 
     intensity_str = st.sidebar.text_area("Keyframes Intensità", height=100)
     size_str = st.sidebar.text_area("Keyframes Dimensione", height=100)
@@ -79,7 +79,7 @@ else:
     st.sidebar.subheader("🎨 Controlli Illusione")
     intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
     element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
-    num_elements_factor = st.sidebar.slider("🔢 Numero Elementi", 0.1, 2.0, 1.0, 0.1)
+    num_elements_factor = st.sidebar.slider("🔢 Fattore Elementi", 0.1, 2.0, 1.0, 0.1)
 
 
 st.sidebar.subheader("📝 Titolo Video")
@@ -187,8 +187,9 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity, ele
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
     
-    line_spacing = int(25 * element_size_factor / num_elements_factor + bass_val * 15 * intensity)
-    line_spacing = max(1, line_spacing) # Evita divisione per zero
+    base_spacing = 70.0
+    line_spacing = int(base_spacing / num_elements_factor * element_size_factor + bass_val * 15 * intensity)
+    line_spacing = max(1, line_spacing)
     line_width = max(1, int(1 + high_val * 4))
 
     # Disegna linee diagonali da in basso a sinistra a in alto a destra
@@ -223,7 +224,8 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
-    step_size = int(30 * element_size_factor / num_elements_factor)
+    base_step_size = 50.0
+    step_size = int(base_step_size / num_elements_factor * element_size_factor)
     step_size = max(1, step_size)
     rotation_angle = frame * 0.5 + mid_val * 45
 
@@ -254,8 +256,9 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, ele
     img = np.zeros((height, width), dtype=float)
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
-
-    square_size = int(40 * element_size_factor / num_elements_factor + mid_val * 60 * intensity)
+    
+    base_square_size = 60.0
+    square_size = int(base_square_size / num_elements_factor * element_size_factor + mid_val * 60 * intensity)
     square_size = max(1, square_size)
     edge_width = max(1, int(1 + high_val * 4))
 
@@ -299,8 +302,9 @@ def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensi
     img = np.zeros((height, width), dtype=float)
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
-
-    element_size = int(25 * element_size_factor / num_elements_factor + mid_val * 35 * intensity)
+    
+    base_element_size = 40.0
+    element_size = int(base_element_size / num_elements_factor * element_size_factor + mid_val * 35 * intensity)
     element_size = max(1, element_size)
     phase = frame * 0.2
 
@@ -321,8 +325,9 @@ def y_junctions_illusion(width, height, frame, audio_features, intensity, elemen
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
-
-    square_size = int(30 * element_size_factor / num_elements_factor + bass_val * 40 * intensity)
+    
+    base_square_size = 50.0
+    square_size = int(base_square_size / num_elements_factor * element_size_factor + bass_val * 40 * intensity)
     square_size = max(1, square_size)
     lateral_shift = int((frame * 0.5 * mid_val * intensity) % max(1, square_size))
 
@@ -359,8 +364,9 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
 
     drift_speed = max(0.01, tempo_factor * intensity)
     drift_offset = (frame * drift_speed) % 100
-
-    spine_spacing = int(40 * element_size_factor / num_elements_factor + high_val * 30)
+    
+    base_spine_spacing = 60.0
+    spine_spacing = int(base_spine_spacing / num_elements_factor * element_size_factor + high_val * 30)
     spine_spacing = max(1, spine_spacing)
     spine_length = int(20 * element_size_factor + high_val * 25 * intensity)
 
@@ -399,7 +405,7 @@ def spiral_illusion(width, height, frame, audio_features, intensity, element_siz
     max_radius = min(width, height) // 2
     spiral_tightness = 0.1 * element_size_factor + bass_val * 0.2 * intensity
     rotation_speed = frame * 0.05 + mid_val * 0.1
-
+    
     num_arms = max(1, int(3 * num_elements_factor))
     for arm in range(num_arms):
         arm_offset = (2 * np.pi * arm) / num_arms
@@ -419,25 +425,21 @@ def zollner_illusion(width, height, frame, audio_features, intensity, element_si
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
-
-    # Spaziatura delle linee verticali, controllata dai bassi
-    line_spacing = int(25 * element_size_factor / num_elements_factor + bass_val * 20 * intensity)
+    
+    base_spacing = 70.0
+    line_spacing = int(base_spacing / num_elements_factor * element_size_factor + bass_val * 20 * intensity)
     line_spacing = max(1, line_spacing)
     
-    # Angolo delle piccole linee oblique, controllato dai medi
     oblique_angle = np.radians(45 + mid_val * 45)
     
-    # Spostamento orizzontale per creare un effetto di "scorrimento"
     horizontal_shift = int(high_val * 10)
 
     for x in range(0, width + line_spacing, line_spacing):
         x_shifted = x + horizontal_shift
-        # Disegna le lunghe linee parallele
         rr, cc = line(0, x_shifted, height - 1, x_shifted)
         valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
         img[rr[valid], cc[valid]] = 1.0
 
-        # Disegna le piccole linee oblique per l'illusione
         for y in range(0, height, int(line_spacing / 2)):
             length = int(10 * element_size_factor)
             ex = int(x_shifted + length * np.cos(oblique_angle))
