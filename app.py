@@ -36,25 +36,27 @@ illusion_type = st.sidebar.selectbox(
 )
 
 # ---------------------------------
-# NUOVA SEZIONE KEYFRAME SEMPLIFICATI
+# SEZIONE KEYFRAME AGGIORNATA
 # ---------------------------------
 st.sidebar.subheader("🎥 Sequenza Keyframe (avanzato)")
 use_keyframes = st.sidebar.checkbox("Usa Sequenza Keyframe", value=False)
 
-if not use_keyframes:
-    st.sidebar.subheader("🎨 Controlli Illusione")
-    intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
-    element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
-else:
+keyframes_intensity = {}
+keyframes_size = {}
+keyframes_elements = {}
+
+if use_keyframes:
     st.sidebar.caption("Definisci i keyframe (tempo_in_secondi:valore).")
-    st.sidebar.info("Esempio:\n0:1.0\n10:1.5\n20:0.8")
+    st.sidebar.info("Esempio:\n0:10\n10:15\n20:8")
 
     intensity_str = st.sidebar.text_area("Keyframes Intensità", height=100)
     size_str = st.sidebar.text_area("Keyframes Dimensione", height=100)
+    elements_str = st.sidebar.text_area("Keyframes Numero Elementi", height=100)
     
     # Valori di fallback se non si usano i keyframe
     intensity = 1.0
     element_size_factor = 1.0
+    num_elements_factor = 1.0
 
     def parse_keyframes(keyframe_string):
         keyframes_dict = {}
@@ -72,6 +74,12 @@ else:
 
     keyframes_intensity = parse_keyframes(intensity_str)
     keyframes_size = parse_keyframes(size_str)
+    keyframes_elements = parse_keyframes(elements_str)
+else:
+    st.sidebar.subheader("🎨 Controlli Illusione")
+    intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
+    element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
+    num_elements_factor = st.sidebar.slider("🔢 Numero Elementi", 0.1, 2.0, 1.0, 0.1)
 
 
 st.sidebar.subheader("📝 Titolo Video")
@@ -171,7 +179,7 @@ def escape_drawtext(text: str) -> str:
 # ILLUSIONI SCIENTIFICHE
 # ---------------------------------
 
-def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor):
+def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     """
     EFFETTO LINEE DIAGONALI - Corretto per riempire l'intero schermo
     """
@@ -179,7 +187,8 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity, ele
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
     
-    line_spacing = int(25 * element_size_factor + bass_val * 15 * intensity)
+    line_spacing = int(25 * element_size_factor / num_elements_factor + bass_val * 15 * intensity)
+    line_spacing = max(1, line_spacing) # Evita divisione per zero
     line_width = max(1, int(1 + high_val * 4))
 
     # Disegna linee diagonali da in basso a sinistra a in alto a destra
@@ -206,7 +215,7 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity, ele
             img[rr[valid], cc[valid]] = 0.5
     return img
 
-def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor):
+def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     """
     EFFETTO TRIANGOLI ROTANTI
     """
@@ -214,7 +223,8 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
-    step_size = int(30 * element_size_factor) 
+    step_size = int(30 * element_size_factor / num_elements_factor)
+    step_size = max(1, step_size)
     rotation_angle = frame * 0.5 + mid_val * 45
 
     for y in range(0, height, step_size):
@@ -240,12 +250,13 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
             img[rr[valid], cc[valid]] = 1.0
     return img
 
-def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor):
+def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
-    square_size = int(40 + mid_val * 60 * intensity * element_size_factor)
+    square_size = int(40 * element_size_factor / num_elements_factor + mid_val * 60 * intensity)
+    square_size = max(1, square_size)
     edge_width = max(1, int(1 + high_val * 4))
 
     for y in range(0, height, square_size):
@@ -259,7 +270,7 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, ele
                 img[end_y-edge_width:end_y, x:end_x] = 1.0 - fill_value
     return img
 
-def illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor):
+def illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     tempo_factor = audio_features["tempo"] / 120.0
@@ -270,7 +281,8 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity,
     for cx, cy in centers:
         max_radius = min(width, height) // 6 * element_size_factor
         current_radius = int(max_radius * (0.5 + 0.5 * bass_val * intensity))
-        num_spokes = int(8 + tempo_factor * 4)
+        num_spokes = int(8 * num_elements_factor + tempo_factor * 4)
+        num_spokes = max(1, num_spokes)
         for i in range(num_spokes):
             angle = (2 * np.pi * i / num_spokes) + (frame * 0.1 * tempo_factor)
             ex = int(cx + current_radius * np.cos(angle))
@@ -283,12 +295,13 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity,
             img[rr, cc] = 0.7
     return img
 
-def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor):
+def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
-    element_size = int(25 + mid_val * 35 * intensity * element_size_factor)
+    element_size = int(25 * element_size_factor / num_elements_factor + mid_val * 35 * intensity)
+    element_size = max(1, element_size)
     phase = frame * 0.2
 
     for y in range(0, height, element_size):
@@ -304,12 +317,13 @@ def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensi
                 draw_rect_border(img, x, y, x2, y2, 0.8, thickness=2)
     return img
 
-def y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor):
+def y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
-    square_size = int(30 * element_size_factor + bass_val * 40 * intensity)
+    square_size = int(30 * element_size_factor / num_elements_factor + bass_val * 40 * intensity)
+    square_size = max(1, square_size)
     lateral_shift = int((frame * 0.5 * mid_val * intensity) % max(1, square_size))
 
     start_x = -lateral_shift
@@ -338,7 +352,7 @@ def y_junctions_illusion(width, height, frame, audio_features, intensity, elemen
                     img[rr[valid], cc[valid]] = 0.5
     return img
 
-def drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor):
+def drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     high_val = audio_features["high"][frame % len(audio_features["high"])]
     tempo_factor = audio_features["tempo"] / 120.0
@@ -346,7 +360,8 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
     drift_speed = max(0.01, tempo_factor * intensity)
     drift_offset = (frame * drift_speed) % 100
 
-    spine_spacing = int(40 * element_size_factor + high_val * 30)
+    spine_spacing = int(40 * element_size_factor / num_elements_factor + high_val * 30)
+    spine_spacing = max(1, spine_spacing)
     spine_length = int(20 * element_size_factor + high_val * 25 * intensity)
 
     for y in range(0, height, spine_spacing):
@@ -375,7 +390,7 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
             img[rr, cc] = 0.7
     return img
 
-def spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor):
+def spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
@@ -385,7 +400,7 @@ def spiral_illusion(width, height, frame, audio_features, intensity, element_siz
     spiral_tightness = 0.1 * element_size_factor + bass_val * 0.2 * intensity
     rotation_speed = frame * 0.05 + mid_val * 0.1
 
-    num_arms = 3
+    num_arms = max(1, int(3 * num_elements_factor))
     for arm in range(num_arms):
         arm_offset = (2 * np.pi * arm) / num_arms
         for r in range(5, max_radius, 3):
@@ -399,14 +414,15 @@ def spiral_illusion(width, height, frame, audio_features, intensity, element_siz
                 img[rr, cc] = intensity_val
     return img
 
-def zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor):
+def zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor):
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
     # Spaziatura delle linee verticali, controllata dai bassi
-    line_spacing = int(25 * element_size_factor + bass_val * 20 * intensity)
+    line_spacing = int(25 * element_size_factor / num_elements_factor + bass_val * 20 * intensity)
+    line_spacing = max(1, line_spacing)
     
     # Angolo delle piccole linee oblique, controllato dai medi
     oblique_angle = np.radians(45 + mid_val * 45)
@@ -438,29 +454,29 @@ def zollner_illusion(width, height, frame, audio_features, intensity, element_si
             
     return img
 
-def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor):
+def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor):
     np.random.seed(seed + frame)
 
     if illusion_type == "Illusory Tilt (Line)":
-        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor)
+        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Illusory Tilt (Mixed)":
-        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor)
+        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Illusory Tilt (Edge)":
-        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor)
+        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Illusory Motion (Mather)":
-        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor)
+        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Illusory Motion (Takeuchi)":
-        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor)
+        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Y-Junctions":
-        img = y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+        img = y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Drifting Spines":
-        img = drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+        img = drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Spiral Illusion":
-        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     elif illusion_type == "Zollner Illusion":
-        img = zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+        img = zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     else:
-        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor)
+        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor)
     return apply_colors(img, line_color, bg_color)
 
 
@@ -530,6 +546,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
             current_time = frame / fps
             current_intensity = intensity
             current_size_factor = element_size_factor
+            current_num_elements_factor = num_elements_factor
             
             if use_keyframes:
                 if keyframes_intensity:
@@ -540,12 +557,16 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
                     interpolated_size = interpolate_value(current_time, keyframes_size)
                     if interpolated_size is not None:
                         current_size_factor = interpolated_size
+                if keyframes_elements:
+                    interpolated_elements = interpolate_value(current_time, keyframes_elements)
+                    if interpolated_elements is not None:
+                        current_num_elements_factor = interpolated_elements
 
             current_illusion_type = illusion_type
 
             colored = generate_illusion_frame(
                 size[0], size[1], frame, audio_features,
-                current_intensity, current_illusion_type, seed, current_size_factor
+                current_intensity, current_illusion_type, seed, current_size_factor, current_num_elements_factor
             )
             im.set_array(colored)
             return [im]
