@@ -299,7 +299,13 @@ def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
                           seed, intensity, size_factor, elements_factor, rotation_factor,
                           use_keyframes, video_title):
     science = ILLUSION_SCIENCE.get(illusion_type, {"it": "-", "en": "-", "tags": []})
-    hashtags = " ".join(f"#{t}" for t in ["loop507", "vjing", "generativeart", "audioreactive"] + science["tags"])
+    base_tags = [
+        "loop507", "vjing", "creativecoding", "generativeart", "reactiveaudio",
+        "algorithmicmusic", "pythonart", "audiovisualart", "synesthesia",
+        "proceduralaudio", "digitalartists", "abstractmotion", "visualalchemy",
+    ]
+    all_tags = base_tags + [t for t in science["tags"] if t not in base_tags]
+    hashtags = " ".join(f"#{t}" for t in all_tags)
     kf_note_it = "Sequenza keyframe attiva (parametri interpolati nel tempo)." if use_keyframes else "Parametri statici (nessun keyframe)."
     kf_note_en = "Keyframe sequence active (parameters interpolated over time)." if use_keyframes else "Static parameters (no keyframes)."
     title_line = f'Titolo sovraimpresso: "{video_title.strip()}"' if video_title.strip() else "Nessun titolo sovraimpresso."
@@ -337,9 +343,7 @@ Audio sync    :: bass->cell size/amplitude | mids->phase shift/drift | highs->li
 
 Every frame is pure math chasing sound, no neural net in between.
 
-================================================================
 {hashtags}
-================================================================
 """
     return report
 
@@ -702,12 +706,21 @@ PREVIEW_DURATION_SEC = 2.0
 PREVIEW_N_FRAMES = max(4, int(PREVIEW_FPS * PREVIEW_DURATION_SEC))
 
 if st.button("👁️ Genera anteprima"):
+    # Stessa mappatura risoluzione usata nel render completo piu' sotto:
+    # la preview deve essere una VERA miniatura proporzionale, non un
+    # pattern a griglia diversa solo perche' i pixel assoluti sono pochi.
+    if aspect_ratio == "16:9": full_target_size = (1280, 720)
+    elif aspect_ratio == "1:1": full_target_size = (720, 720)
+    else: full_target_size = (720, 1280)
+
     if aspect_ratio == "16:9":
         preview_size = (PREVIEW_MAX_DIM, int(PREVIEW_MAX_DIM * 9 / 16))
     elif aspect_ratio == "1:1":
         preview_size = (PREVIEW_MAX_DIM, PREVIEW_MAX_DIM)
     else:
         preview_size = (int(PREVIEW_MAX_DIM * 9 / 16), PREVIEW_MAX_DIM)
+
+    preview_scale = preview_size[0] / full_target_size[0]
 
     if uploaded_file is not None:
         ext = os.path.splitext(uploaded_file.name)[1].lower()
@@ -746,6 +759,12 @@ if st.button("👁️ Genera anteprima"):
             v = interpolate_value(0.0, keyframes_rotation)
             if v is not None: preview_rotation_factor = v
 
+    # Le funzioni di illusione usano dimensioni cella/elemento in pixel
+    # assoluti: senza questo riscalamento, a bassa risoluzione la griglia
+    # avrebbe meno celle (pattern piu' "grosso") invece di essere una
+    # miniatura fedele del video finale.
+    preview_size_factor_scaled = preview_size_factor * preview_scale
+
     preview_seed = random.randint(1, 10000)
     FULL_RENDER_FPS = 30  # deve combaciare con l'fps del render completo piu' sotto
     with st.spinner(f"Generazione anteprima ({PREVIEW_N_FRAMES} frame, {preview_size[0]}×{preview_size[1]}px)..."):
@@ -757,7 +776,7 @@ if st.button("👁️ Genera anteprima"):
             frame_img = generate_illusion_frame(
                 preview_size[0], preview_size[1], real_frame_equiv, preview_features,
                 preview_intensity, illusion_type, preview_seed,
-                preview_size_factor, preview_elements_factor, preview_rotation_factor
+                preview_size_factor_scaled, preview_elements_factor, preview_rotation_factor
             )
             frame_uint8 = (np.clip(frame_img, 0.0, 1.0) * 255).astype(np.uint8)
             preview_frames.append(Image.fromarray(frame_uint8))
