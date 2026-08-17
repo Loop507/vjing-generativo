@@ -1,6 +1,7 @@
 streamlit
 librosa
 numpy
-matplotlib
+opencv-python-headless
 ffmpeg-python
 scikit-image
+soundfile
