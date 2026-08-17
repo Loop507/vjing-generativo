@@ -909,22 +909,12 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         final = ffmpeg.output(video_stream, audio_stream, output_file.name, **output_kwargs)
         ffmpeg.run(final, overwrite_output=True, quiet=True)
 
+    # Leggo i byte in memoria e li salvo in session_state: un download_button
+    # (compreso quello del report) fa ripartire da capo lo script, e senza
+    # session_state tutto cio' che era dentro "if st.button(...)" sparirebbe
+    # (bottone di generazione tornato "non premuto"), video incluso.
     with open(output_file.name, "rb") as f:
-        st.download_button(
-            "📥 Scarica Video Illusorio Scientifico",
-            f,
-            file_name=f"vjing_{illusion_type.lower().replace(' ', '_')}_output.mp4",
-            mime="video/mp4",
-        )
-
-    try:
-        os.remove(tmp_audio.name)
-        os.remove(tmp_video.name)
-        os.remove(output_file.name)
-    except Exception:
-        pass
-
-    st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
+        video_bytes = f.read()
 
     report_text = build_loop507_report(
         illusion_type=illusion_type, duration=duration, fps=fps, n_frames=n_frames,
@@ -933,10 +923,39 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         elements_factor=num_elements_factor, rotation_factor=rotation_speed_factor,
         use_keyframes=use_keyframes, video_title=video_title,
     )
-    st.text(report_text)
+    safe_name = illusion_type.lower().replace(" ", "_").replace("(", "").replace(")", "")
+
+    st.session_state["loop507_video_bytes"] = video_bytes
+    st.session_state["loop507_video_filename"] = f"vjing_{safe_name}_output.mp4"
+    st.session_state["loop507_report_text"] = report_text
+    st.session_state["loop507_report_filename"] = f"loop507_report_{safe_name}.txt"
+
+    try:
+        os.remove(tmp_audio.name)
+        os.remove(tmp_video.name)
+        os.remove(output_file.name)
+    except Exception:
+        pass
+
+# ---------------------------------
+# OUTPUT PERSISTENTE (video + report)
+# Fuori dal blocco "if st.button(...)": resta visibile anche dopo un rerun
+# causato da un click su un altro bottone (es. il download del report).
+# ---------------------------------
+if "loop507_video_bytes" in st.session_state:
+    st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
+    st.download_button(
+        "📥 Scarica Video Illusorio Scientifico",
+        st.session_state["loop507_video_bytes"],
+        file_name=st.session_state["loop507_video_filename"],
+        mime="video/mp4",
+        key="download_video_btn",
+    )
+    st.text(st.session_state["loop507_report_text"])
     st.download_button(
         "📄 Scarica Report Bilingue (.txt)",
-        report_text,
-        file_name=f"loop507_report_{illusion_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}.txt",
+        st.session_state["loop507_report_text"],
+        file_name=st.session_state["loop507_report_filename"],
         mime="text/plain",
+        key="download_report_btn",
     )
