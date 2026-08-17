@@ -71,7 +71,7 @@ if use_keyframes:
                     value = float(value_str.strip())
                     keyframes_dict[time] = value
                 except ValueError:
-                    st.sidebar.warning(f"Formato keyframe non valido: '{line}'. Ignorato.")
+                    st.sidebar.warning(f"Formato keyframe non valido: '{kf_line}'. Ignorato.")
         return keyframes_dict
 
     keyframes_intensity = parse_keyframes(intensity_str)
@@ -202,6 +202,38 @@ def draw_four_stroke_cell(img, cx, cy, half, state, style, min_radius, max_radiu
         rr2, cc2 = disk((cy, cx), radius - 2, shape=(h_img, w_img))
         img[rr2, cc2] = bgval
 
+def make_bowtie_tiles(width, height, cell, half_w, half_h, row_shift):
+    """
+    Costruisce, con operazioni numpy vettorizzate (niente loop per-cella),
+    le maschere booleane tassellate del pattern bowtie e la griglia colore
+    (top_val_pixel) gia' espansa a risoluzione pixel. Il template della
+    singola cella viene disegnato UNA sola volta per frame (con le funzioni
+    di disegno esistenti) e poi ripetuto con np.tile: e' il pattern che
+    sostituisce il doppio loop Python for-riga/for-colonna.
+    """
+    cell = max(2, cell)
+    n_rows = height // cell + 2
+    n_cols = width // cell + 2
+
+    template = np.zeros((cell, cell), dtype=float)
+    tcx, tcy = cell // 2, cell // 2
+    draw_triangle_down(template, tcx, tcy, half_w, half_h, 1.0)
+    top_mask = template > 0
+    template[:] = 0.0
+    draw_triangle_up(template, tcx, tcy, half_w, half_h, 1.0)
+    bottom_mask = template > 0
+
+    top_mask_tiled = np.tile(top_mask, (n_rows, n_cols))[:height, :width]
+    bottom_mask_tiled = np.tile(bottom_mask, (n_rows, n_cols))[:height, :width]
+
+    row_idx = np.arange(n_rows)[:, None]
+    col_idx = np.arange(n_cols)[None, :]
+    phase = (row_idx + row_shift) % 2
+    top_val_cells = ((col_idx + phase) % 2 == 0).astype(float)
+    top_val_pixel = np.kron(top_val_cells, np.ones((cell, cell)))[:height, :width]
+
+    return top_mask_tiled, bottom_mask_tiled, top_val_pixel
+
 def escape_drawtext(text: str) -> str:
     # Minima escape per drawtext ffmpeg
     return (
@@ -220,8 +252,8 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity, ele
     Griglia di celle bowtie: triangolo superiore e inferiore a contrasto invertito,
     separati da una linea centrale. L'alternanza di polarita' a scacchiera,
     con sfasamento riga per riga, genera l'illusione di inclinazione della linea.
+    Vettorizzato: niente doppio loop per-cella, solo un loop leggero sulle righe.
     """
-    img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
@@ -232,24 +264,17 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity, ele
     half_w = int(cell * 0.42)
     half_h = int(cell * 0.42)
     line_width = max(1, int(1 + high_val * 4 * intensity))
-
     row_shift = int(frame * 0.3 * rotation_speed_factor * (0.3 + mid_val))
 
-    for row_idx, cy in enumerate(range(cell // 2, height, cell)):
-        phase = (row_idx + row_shift) % 2
-        for col_idx, cx in enumerate(range(cell // 2, width, cell)):
-            top_white = (col_idx + phase) % 2 == 0
-            top_val = 1.0 if top_white else 0.0
-            bottom_val = 1.0 - top_val
-            draw_triangle_down(img, cx, cy, half_w, half_h, top_val)
-            draw_triangle_up(img, cx, cy, half_w, half_h, bottom_val)
-            rr, cc = line(max(0, cy - line_width // 2), max(0, cx - half_w),
-                          max(0, cy - line_width // 2), min(width - 1, cx + half_w))
-            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
-            img[rr[valid], cc[valid]] = 1.0 - top_val
-            for t in range(line_width):
-                yy = min(height - 1, cy + t)
-                img[yy, max(0, cx - half_w):min(width, cx + half_w)] = 1.0 - top_val
+    top_mask, bottom_mask, top_val_pixel = make_bowtie_tiles(width, height, cell, half_w, half_h, row_shift)
+    bottom_val_pixel = 1.0 - top_val_pixel
+    img = np.where(top_mask, top_val_pixel, np.where(bottom_mask, bottom_val_pixel, 0.0))
+
+    for cy in range(cell // 2, height, cell):
+        y0 = max(0, cy - line_width // 2)
+        y1 = min(height, y0 + line_width)
+        if y0 < height:
+            img[y0:y1, :] = bottom_val_pixel[cy if cy < height else height - 1, :][np.newaxis, :]
     return img
 
 def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
@@ -258,8 +283,8 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
     Stessa griglia bowtie del line-type, ma meta' delle celle mostra la linea
     centrale e meta' mostra solo il bordo di contrasto (edge), a scacchiera:
     combinazione "linee & edge" come nel pannello centrale del riferimento.
+    Vettorizzato: niente doppio loop per-cella.
     """
-    img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
@@ -272,19 +297,24 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
     line_width = max(1, int(1 + high_val * 4 * intensity))
     row_shift = int(frame * 0.3 * rotation_speed_factor * (0.3 + mid_val))
 
-    for row_idx, cy in enumerate(range(cell // 2, height, cell)):
-        phase = (row_idx + row_shift) % 2
-        for col_idx, cx in enumerate(range(cell // 2, width, cell)):
-            top_white = (col_idx + phase) % 2 == 0
-            top_val = 1.0 if top_white else 0.0
-            bottom_val = 1.0 - top_val
-            draw_triangle_down(img, cx, cy, half_w, half_h, top_val)
-            draw_triangle_up(img, cx, cy, half_w, half_h, bottom_val)
-            has_line = (row_idx + col_idx) % 2 == 0
-            if has_line:
-                for t in range(line_width):
-                    yy = min(height - 1, cy + t)
-                    img[yy, max(0, cx - half_w):min(width, cx + half_w)] = 1.0 - top_val
+    top_mask, bottom_mask, top_val_pixel = make_bowtie_tiles(width, height, cell, half_w, half_h, row_shift)
+    bottom_val_pixel = 1.0 - top_val_pixel
+    img = np.where(top_mask, top_val_pixel, np.where(bottom_mask, bottom_val_pixel, 0.0))
+
+    n_rows = height // cell + 2
+    n_cols = width // cell + 2
+    row_idx = np.arange(n_rows)[:, None]
+    col_idx = np.arange(n_cols)[None, :]
+    has_line_cells = ((row_idx + col_idx) % 2 == 0).astype(float)
+    has_line_pixel = np.kron(has_line_cells, np.ones((cell, cell)))[:height, :width] > 0.5
+
+    for cy in range(cell // 2, height, cell):
+        y0 = max(0, cy - line_width // 2)
+        y1 = min(height, y0 + line_width)
+        if y0 < height:
+            row_line = has_line_pixel[cy if cy < height else height - 1, :]
+            row_val = bottom_val_pixel[cy if cy < height else height - 1, :]
+            img[y0:y1, :] = np.where(row_line, row_val, img[y0:y1, :])
     return img
 
 def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
@@ -292,8 +322,8 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, ele
     ILLUSORY TILT - Edge-type.
     Stessa griglia bowtie, senza linea: solo il bordo di contrasto tra i due
     triangoli genera l'inclinazione percepita ("=" geometrico nel riferimento).
+    Completamente vettorizzato: nessun loop Python, solo operazioni numpy.
     """
-    img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
@@ -304,14 +334,9 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, ele
     half_h = int(cell * 0.42)
     row_shift = int(frame * 0.3 * rotation_speed_factor * (0.3 + bass_val))
 
-    for row_idx, cy in enumerate(range(cell // 2, height, cell)):
-        phase = (row_idx + row_shift) % 2
-        for col_idx, cx in enumerate(range(cell // 2, width, cell)):
-            top_white = (col_idx + phase) % 2 == 0
-            top_val = 1.0 if top_white else 0.0
-            bottom_val = 1.0 - top_val
-            draw_triangle_down(img, cx, cy, half_w, half_h, top_val)
-            draw_triangle_up(img, cx, cy, half_w, half_h, bottom_val)
+    top_mask, bottom_mask, top_val_pixel = make_bowtie_tiles(width, height, cell, half_w, half_h, row_shift)
+    bottom_val_pixel = 1.0 - top_val_pixel
+    img = np.where(top_mask, top_val_pixel, np.where(bottom_mask, bottom_val_pixel, 0.0))
     return img
 
 def illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
@@ -412,8 +437,9 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
     Texture densa di piccoli marcatori a farfalla (bowtie), come nel
     riferimento: ogni riga e' traslata orizzontalmente rispetto alla
     precedente (drift), producendo "retinal slip" e moto illusorio laterale.
+    Vettorizzato: griglia costruita con make_bowtie_tiles, il drift per riga
+    e' applicato con np.roll (un loop leggero sulle righe, non piu' sulle celle).
     """
-    img = np.zeros((height, width), dtype=float)
     high_val = audio_features["high"][frame % len(audio_features["high"])]
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     tempo_factor = audio_features["tempo"] / 120.0
@@ -426,14 +452,16 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
     drift_speed = max(0.01, tempo_factor * intensity * rotation_speed_factor)
     drift_offset = (frame * drift_speed * 3) % spacing
 
-    for row_idx, y in enumerate(range(spacing // 2, height, spacing)):
-        row_shift = int(drift_offset * (1 if row_idx % 2 == 0 else -1))
-        for col_idx, x0 in enumerate(range(spacing // 2, width + spacing, spacing)):
-            x = x0 + row_shift
-            if -marker_half <= x < width + marker_half:
-                val = 1.0 if (row_idx + col_idx) % 2 == 0 else 0.0
-                draw_triangle_up(img, x, y, marker_half, marker_half, val)
-                draw_triangle_down(img, x, y, marker_half, marker_half, 1.0 - val)
+    top_mask, bottom_mask, top_val_pixel = make_bowtie_tiles(width, height, spacing, marker_half, marker_half, 0)
+    bottom_val_pixel = 1.0 - top_val_pixel
+    base_img = np.where(top_mask, top_val_pixel, np.where(bottom_mask, bottom_val_pixel, 0.0))
+
+    img = np.zeros((height, width), dtype=float)
+    shift_int = int(round(drift_offset))
+    for row_idx, y0 in enumerate(range(0, height, spacing)):
+        y1 = min(height, y0 + spacing)
+        shift = shift_int if row_idx % 2 == 0 else -shift_int
+        img[y0:y1, :] = np.roll(base_img[y0:y1, :], shift, axis=1)
 
     for x in range(0, width, max(2, spacing // 2)):
         hy = int(height // 2 + 40 * np.sin(x * 0.05 * rotation_speed_factor + drift_offset * 0.1))
@@ -559,6 +587,71 @@ def interpolate_value(time, keyframes):
 # ---------------------------------
 # MAIN
 # ---------------------------------
+# ---------------------------------
+# ANTEPRIMA RAPIDA (BASSA RISOLUZIONE)
+# Singolo frame, nessun rendering video: serve solo a controllare
+# rapidamente l'aspetto dell'illusione con i parametri correnti, prima
+# di lanciare il render completo (che puo' richiedere minuti).
+# ---------------------------------
+st.subheader("🔍 Anteprima rapida (bassa risoluzione)")
+PREVIEW_MAX_DIM = 260  # deliberatamente basso: e' solo un controllo visivo veloce
+
+if st.button("👁️ Genera anteprima"):
+    if aspect_ratio == "16:9":
+        preview_size = (PREVIEW_MAX_DIM, int(PREVIEW_MAX_DIM * 9 / 16))
+    elif aspect_ratio == "1:1":
+        preview_size = (PREVIEW_MAX_DIM, PREVIEW_MAX_DIM)
+    else:
+        preview_size = (int(PREVIEW_MAX_DIM * 9 / 16), PREVIEW_MAX_DIM)
+
+    if uploaded_file is not None:
+        ext = os.path.splitext(uploaded_file.name)[1].lower()
+        if ext not in (".wav", ".mp3"): ext = ".wav"
+        tmp_preview_audio = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        tmp_preview_audio.write(uploaded_file.getvalue())
+        tmp_preview_audio.close()
+        y_prev, sr_prev = librosa.load(tmp_preview_audio.name, sr=None, duration=2.0)
+        duration_prev = float(librosa.get_duration(y=y_prev, sr=sr_prev))
+        preview_features = analyze_audio(tmp_preview_audio.name, max(duration_prev, 0.5), 10)
+        os.remove(tmp_preview_audio.name)
+    else:
+        st.caption("Nessun audio caricato: anteprima con valori audio neutri.")
+        preview_features = {
+            "tempo": 120.0,
+            "bass": np.full(10, 0.5), "mid": np.full(10, 0.5), "high": np.full(10, 0.5),
+        }
+
+    preview_intensity = intensity
+    preview_size_factor = element_size_factor
+    preview_elements_factor = num_elements_factor
+    preview_rotation_factor = rotation_speed_factor
+    if use_keyframes:
+        if keyframes_intensity:
+            v = interpolate_value(0.0, keyframes_intensity)
+            if v is not None: preview_intensity = v
+        if keyframes_size:
+            v = interpolate_value(0.0, keyframes_size)
+            if v is not None: preview_size_factor = v
+        if keyframes_elements:
+            v = interpolate_value(0.0, keyframes_elements)
+            if v is not None: preview_elements_factor = v
+        if keyframes_rotation:
+            v = interpolate_value(0.0, keyframes_rotation)
+            if v is not None: preview_rotation_factor = v
+
+    preview_seed = random.randint(1, 10000)
+    preview_img = generate_illusion_frame(
+        preview_size[0], preview_size[1], 5, preview_features,
+        preview_intensity, illusion_type, preview_seed,
+        preview_size_factor, preview_elements_factor, preview_rotation_factor
+    )
+    st.image(
+        (np.clip(preview_img, 0.0, 1.0) * 255).astype(np.uint8),
+        caption=f"Anteprima {preview_size[0]}×{preview_size[1]}px — {illusion_type}",
+        width=preview_size[0] * 2,
+    )
+    st.caption("Anteprima a bassa risoluzione: il video finale sara' generato alla risoluzione piena selezionata sopra.")
+
 if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="primary"):
     # Salva l'audio con estensione coerente
     ext = os.path.splitext(uploaded_file.name)[1].lower()
