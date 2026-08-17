@@ -1,8 +1,7 @@
 import streamlit as st
 import librosa
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation, FFMpegWriter
+import cv2
 import tempfile
 import os
 import random
@@ -561,85 +560,97 @@ def interpolate_value(time, keyframes):
 # MAIN
 # ---------------------------------
 if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="primary"):
-    with st.spinner("🎨 Creazione video con illusioni scientificamente accurate..."):
-        # Salva l'audio con estensione coerente
-        ext = os.path.splitext(uploaded_file.name)[1].lower()
-        if ext not in (".wav", ".mp3"): ext = ".wav"
-        tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-        tmp_audio.write(uploaded_file.read())
-        tmp_audio.close()
+    # Salva l'audio con estensione coerente
+    ext = os.path.splitext(uploaded_file.name)[1].lower()
+    if ext not in (".wav", ".mp3"): ext = ".wav"
+    tmp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+    tmp_audio.write(uploaded_file.read())
+    tmp_audio.close()
 
-        y, sr = librosa.load(tmp_audio.name, sr=None)
-        duration = float(librosa.get_duration(y=y, sr=sr))
-        st.info(f"🎵 Durata audio: {duration:.2f} sec")
+    y, sr = librosa.load(tmp_audio.name, sr=None)
+    duration = float(librosa.get_duration(y=y, sr=sr))
+    st.info(f"🎵 Durata audio: {duration:.2f} sec")
 
-        if aspect_ratio == "16:9": size=(1280,720)
-        elif aspect_ratio == "1:1": size=(720,720)
-        else: size=(720,1280)
+    if aspect_ratio == "16:9": size=(1280,720)
+    elif aspect_ratio == "1:1": size=(720,720)
+    else: size=(720,1280)
 
-        fps = 30
-        n_frames = max(1, int(duration * fps))
+    fps = 30
+    n_frames = max(1, int(duration * fps))
+
+    with st.spinner("🎧 Analisi audio (BPM, bande di frequenza)..."):
         audio_features = analyze_audio(tmp_audio.name, duration, fps)
-        tempo_display = audio_features["tempo"] if isinstance(audio_features["tempo"], (int, float)) else 120.0
-        st.info(f"🎯 BPM rilevato: {tempo_display:.1f}")
-        st.info(f"🧬 Illusione selezionata: {illusion_type} (implementazione scientifica)")
+    tempo_display = audio_features["tempo"] if isinstance(audio_features["tempo"], (int, float)) else 120.0
+    st.info(f"🎯 BPM rilevato: {tempo_display:.1f}")
+    st.info(f"🧬 Illusione selezionata: {illusion_type} (implementazione scientifica)")
 
-        seed = random.randint(1, 10000)
-        fig, ax = plt.subplots(figsize=(size[0]/100, size[1]/100), dpi=100)
-        ax.axis("off")
-        ax.set_facecolor('black')
-        plt.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
+    seed = random.randint(1, 10000)
 
-        im = ax.imshow(np.zeros((size[1], size[0], 3)), aspect="equal")
+    # ---------------------------------
+    # RENDERING DIRETTO VIA OPENCV
+    # (niente più matplotlib Agg per-frame: si scrive direttamente il buffer
+    # numpy sul VideoWriter, molto più veloce di FuncAnimation+FFMpegWriter)
+    # ---------------------------------
+    tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    video_writer = cv2.VideoWriter(tmp_video.name, fourcc, fps, size)
 
-        def animate(frame):
-            current_time = frame / fps
-            current_intensity = intensity
-            current_size_factor = element_size_factor
-            current_num_elements_factor = num_elements_factor
-            current_rotation_speed_factor = rotation_speed_factor # NUOVO
-            
-            if use_keyframes:
-                if keyframes_intensity:
-                    interpolated_intensity = interpolate_value(current_time, keyframes_intensity)
-                    if interpolated_intensity is not None:
-                        current_intensity = interpolated_intensity
-                if keyframes_size:
-                    interpolated_size = interpolate_value(current_time, keyframes_size)
-                    if interpolated_size is not None:
-                        current_size_factor = interpolated_size
-                if keyframes_elements:
-                    interpolated_elements = interpolate_value(current_time, keyframes_elements)
-                    if interpolated_elements is not None:
-                        current_num_elements_factor = interpolated_elements
-                if keyframes_rotation: # NUOVO
-                    interpolated_rotation = interpolate_value(current_time, keyframes_rotation)
-                    if interpolated_rotation is not None:
-                        current_rotation_speed_factor = interpolated_rotation
+    progress_bar = st.progress(0.0)
+    status_text = st.empty()
+    update_every = max(1, n_frames // 100)
 
-            current_illusion_type = illusion_type
+    for frame in range(n_frames):
+        current_time = frame / fps
+        current_intensity = intensity
+        current_size_factor = element_size_factor
+        current_num_elements_factor = num_elements_factor
+        current_rotation_speed_factor = rotation_speed_factor
 
-            colored = generate_illusion_frame(
-                size[0], size[1], frame, audio_features,
-                current_intensity, current_illusion_type, seed, current_size_factor,
-                current_num_elements_factor, current_rotation_speed_factor # AGGIORNATO
-            )
-            im.set_array(colored)
-            return [im]
+        if use_keyframes:
+            if keyframes_intensity:
+                interpolated_intensity = interpolate_value(current_time, keyframes_intensity)
+                if interpolated_intensity is not None:
+                    current_intensity = interpolated_intensity
+            if keyframes_size:
+                interpolated_size = interpolate_value(current_time, keyframes_size)
+                if interpolated_size is not None:
+                    current_size_factor = interpolated_size
+            if keyframes_elements:
+                interpolated_elements = interpolate_value(current_time, keyframes_elements)
+                if interpolated_elements is not None:
+                    current_num_elements_factor = interpolated_elements
+            if keyframes_rotation:
+                interpolated_rotation = interpolate_value(current_time, keyframes_rotation)
+                if interpolated_rotation is not None:
+                    current_rotation_speed_factor = interpolated_rotation
 
+        colored = generate_illusion_frame(
+            size[0], size[1], frame, audio_features,
+            current_intensity, illusion_type, seed, current_size_factor,
+            current_num_elements_factor, current_rotation_speed_factor
+        )
+        frame_uint8 = (np.clip(colored, 0.0, 1.0) * 255).astype(np.uint8)
+        frame_bgr = cv2.cvtColor(frame_uint8, cv2.COLOR_RGB2BGR)
+        video_writer.write(frame_bgr)
 
-        anim = FuncAnimation(fig, animate, frames=n_frames, blit=True, interval=1000/fps)
-        tmp_video = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        if frame % update_every == 0 or frame == n_frames - 1:
+            progress_bar.progress((frame + 1) / n_frames)
+            status_text.text(f"🎨 Rendering frame {frame + 1}/{n_frames}")
 
-        writer = FFMpegWriter(fps=fps, metadata=dict(artist='Loop507'), bitrate=1800)
-        anim.save(tmp_video.name, writer=writer)
-        plt.close(fig)
+    video_writer.release()
+    progress_bar.progress(1.0)
+    status_text.text("🎬 Frame completati, mux audio in corso...")
 
+    # ---------------------------------
+    # MUX AUDIO + TITOLO IN UN UNICO PASSAGGIO FFMPEG
+    # (prima erano due processi ffmpeg separati: mux e poi drawtext)
+    # ---------------------------------
+    with st.spinner("🔊 Unione video + audio (e titolo, se presente)..."):
         output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        video = ffmpeg.input(tmp_video.name)
-        audio = ffmpeg.input(tmp_audio.name)
-        final = ffmpeg.output(video, audio, output_file.name, vcodec="libx264", acodec="aac", strict="experimental")
-        ffmpeg.run(final, overwrite_output=True, quiet=True)
+        video_stream = ffmpeg.input(tmp_video.name)
+        audio_stream = ffmpeg.input(tmp_audio.name)
+
+        output_kwargs = dict(vcodec="libx264", acodec="aac", strict="experimental")
 
         if video_title.strip():
             pos_x = "(w-text_w)/2" if horizontal_position == "Centro" else "20" if horizontal_position == "Sinistra" else "w-text_w-20"
@@ -656,41 +667,32 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
             drawtext_args = f"text='{text_escaped}':fontcolor=white:fontsize={font_size}:x={pos_x}:y={pos_y}"
             if fontfile:
                 drawtext_args += f":fontfile={fontfile}"
+            output_kwargs["vf"] = f"drawtext={drawtext_args}"
 
-            titled_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-            (
-                ffmpeg
-                .input(output_file.name)
-                .output(
-                    titled_file.name,
-                    vf=f"drawtext={drawtext_args}",
-                    vcodec="libx264", acodec="aac", strict="experimental"
-                )
-                .run(overwrite_output=True, quiet=True)
-            )
-            os.replace(titled_file.name, output_file.name)
+        final = ffmpeg.output(video_stream, audio_stream, output_file.name, **output_kwargs)
+        ffmpeg.run(final, overwrite_output=True, quiet=True)
 
-        with open(output_file.name, "rb") as f:
-            st.download_button(
-                "📥 Scarica Video Illusorio Scientifico",
-                f,
-                file_name=f"vjing_{illusion_type.lower().replace(' ', '_')}_output.mp4",
-                mime="video/mp4",
-            )
-
-        try:
-            os.remove(tmp_audio.name)
-            os.remove(tmp_video.name)
-            os.remove(output_file.name)
-        except Exception:
-            pass
-
-        st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
-        st.info(
-            f"""
-            🧬 **Implementazione Scientifica Utilizzata:**
-            - **{illusion_type}**: Basato su ricerca neuropsicologica
-            - **Sincronizzazione Audio**: BPM→velocità transizioni, Bassi→movimenti globali, Medi→deformazioni, Alti→micro-dettagli
-            - **Algoritmi**: Mather & Takeuchi (Motion), Retinal Slip (Y-Junctions), Phi Motion Effects
-            """
+    with open(output_file.name, "rb") as f:
+        st.download_button(
+            "📥 Scarica Video Illusorio Scientifico",
+            f,
+            file_name=f"vjing_{illusion_type.lower().replace(' ', '_')}_output.mp4",
+            mime="video/mp4",
         )
+
+    try:
+        os.remove(tmp_audio.name)
+        os.remove(tmp_video.name)
+        os.remove(output_file.name)
+    except Exception:
+        pass
+
+    st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
+    st.info(
+        f"""
+        🧬 **Implementazione Scientifica Utilizzata:**
+        - **{illusion_type}**: Basato su ricerca neuropsicologica
+        - **Sincronizzazione Audio**: BPM→velocità transizioni, Bassi→movimenti globali, Medi→deformazioni, Alti→micro-dettagli
+        - **Algoritmi**: Mather & Takeuchi (Motion), Retinal Slip (Y-Junctions), Phi Motion Effects
+        """
+    )
