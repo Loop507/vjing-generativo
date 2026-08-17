@@ -2,6 +2,8 @@ import streamlit as st
 import librosa
 import numpy as np
 import cv2
+from PIL import Image
+import io
 import tempfile
 import os
 import random
@@ -241,6 +243,105 @@ def escape_drawtext(text: str) -> str:
             .replace(":", "\\:")     # :  -> \:
             .replace("'", "\\'")     # '  -> \'
     )
+
+# ---------------------------------
+# REPORT BILINGUE :: LOOP507 ARCHIVE STYLE
+# ---------------------------------
+ILLUSION_SCIENCE = {
+    "Illusory Tilt (Line)": {
+        "it": "Kitaoka :: Line-type. Griglia bowtie a contrasto invertito con linea centrale; l'alternanza di polarita' a scacchiera genera l'inclinazione percepita.",
+        "en": "Kitaoka :: Line-type. Contrast-reversed bowtie grid with a central line; checkerboard polarity alternation drives the perceived tilt.",
+        "tags": ["illusorytilt", "linetype", "kitaoka"],
+    },
+    "Illusory Tilt (Mixed)": {
+        "it": "Kitaoka :: Mixed-type. Come il line-type ma meta' celle con linea e meta' solo a bordo di contrasto, a scacchiera.",
+        "en": "Kitaoka :: Mixed-type. Same grid as line-type, half the cells carry a center line, half rely on contrast edges only, checkerboard-distributed.",
+        "tags": ["illusorytilt", "mixedtype", "kitaoka"],
+    },
+    "Illusory Tilt (Edge)": {
+        "it": "Kitaoka :: Edge-type. Solo bordo di contrasto tra triangoli, nessuna linea: inclinazione percepita puramente da edge.",
+        "en": "Kitaoka :: Edge-type. Contrast edge only between triangles, no line: perceived tilt from edge information alone.",
+        "tags": ["illusorytilt", "edgetype", "kitaoka"],
+    },
+    "Illusory Motion (Mather)": {
+        "it": "Mather & Murdoch (1999) :: four-stroke apparent motion, cerchi a contorno (line stimuli), phi / reversed phi.",
+        "en": "Mather & Murdoch (1999) :: four-stroke apparent motion, outline circles (line stimuli), phi / reversed phi.",
+        "tags": ["illusorymotion", "mather", "phimotion"],
+    },
+    "Illusory Motion (Takeuchi)": {
+        "it": "Takeuchi (1997) :: motion analogue del cafe wall, cerchi pieni (edge stimuli), fase mixed-type.",
+        "en": "Takeuchi (1997) :: motion analogue of the cafe wall illusion, filled circles (edge stimuli), mixed-type phase.",
+        "tags": ["illusorymotion", "takeuchi", "cafewall"],
+    },
+    "Y-Junctions": {
+        "it": "Retinal slip su reticolo a scacchiera con marcatori a Y-junction alle intersezioni.",
+        "en": "Retinal slip over a checkerboard lattice with Y-junction markers at the intersections.",
+        "tags": ["yjunctions", "retinalslip"],
+    },
+    "Drifting Spines": {
+        "it": "Texture densa di marcatori a farfalla (bowtie) con drift orizzontale per riga, retinal slip laterale.",
+        "en": "Dense bowtie-marker texture with per-row horizontal drift, lateral retinal slip.",
+        "tags": ["driftingspines", "retinalslip"],
+    },
+    "Spiral Illusion": {
+        "it": "Spirale generativa modulata dalle bande di frequenza audio.",
+        "en": "Generative spiral modulated by audio frequency bands.",
+        "tags": ["spiral", "generativeart"],
+    },
+    "Zollner Illusion": {
+        "it": "Illusione di Zollner: linee parallele apparentemente inclinate da segmenti trasversali.",
+        "en": "Zollner illusion: parallel lines appear tilted due to crossing transversal segments.",
+        "tags": ["zollner", "opticalillusion"],
+    },
+}
+
+def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
+                          seed, intensity, size_factor, elements_factor, rotation_factor,
+                          use_keyframes, video_title):
+    science = ILLUSION_SCIENCE.get(illusion_type, {"it": "-", "en": "-", "tags": []})
+    hashtags = " ".join(f"#{t}" for t in ["loop507", "vjing", "generativeart", "audioreactive"] + science["tags"])
+    kf_note_it = "Sequenza keyframe attiva (parametri interpolati nel tempo)." if use_keyframes else "Parametri statici (nessun keyframe)."
+    kf_note_en = "Keyframe sequence active (parameters interpolated over time)." if use_keyframes else "Static parameters (no keyframes)."
+    title_line = f'Titolo sovraimpresso: "{video_title.strip()}"' if video_title.strip() else "Nessun titolo sovraimpresso."
+    title_line_en = f'Overlaid title: "{video_title.strip()}"' if video_title.strip() else "No overlaid title."
+
+    report = f"""LOOP507 :: VJING GENERATIVO :: REPORT DI GENERAZIONE
+
+================================================================
+IT :: ITALIANO
+================================================================
+Illusione     :: {illusion_type}
+Base tecnica  :: {science['it']}
+Formato       :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frame ({duration:.2f}s)
+BPM rilevato  :: {bpm:.1f}
+Seed          :: {seed}
+Parametri     :: intensita={intensity:.2f} | dimensione={size_factor:.2f} | elementi={elements_factor:.2f} | rotazione={rotation_factor:.2f}
+Keyframe      :: {kf_note_it}
+Titolo        :: {title_line}
+Sync audio    :: bassi->dimensione/ampiezza celle | medi->sfasamento/drift | acuti->spessore linee/microdettagli
+
+Ogni fotogramma e' matematica pura che insegue il suono, nessuna rete neurale nel mezzo.
+
+================================================================
+EN :: ENGLISH
+================================================================
+Illusion      :: {illusion_type}
+Technical base:: {science['en']}
+Format        :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frames ({duration:.2f}s)
+Detected BPM  :: {bpm:.1f}
+Seed          :: {seed}
+Parameters    :: intensity={intensity:.2f} | size={size_factor:.2f} | elements={elements_factor:.2f} | rotation={rotation_factor:.2f}
+Keyframes     :: {kf_note_en}
+Title         :: {title_line_en}
+Audio sync    :: bass->cell size/amplitude | mids->phase shift/drift | highs->line thickness/micro-detail
+
+Every frame is pure math chasing sound, no neural net in between.
+
+================================================================
+{hashtags}
+================================================================
+"""
+    return report
 
 # ---------------------------------
 # ILLUSIONI SCIENTIFICHE
@@ -588,13 +689,17 @@ def interpolate_value(time, keyframes):
 # MAIN
 # ---------------------------------
 # ---------------------------------
-# ANTEPRIMA RAPIDA (BASSA RISOLUZIONE)
-# Singolo frame, nessun rendering video: serve solo a controllare
-# rapidamente l'aspetto dell'illusione con i parametri correnti, prima
-# di lanciare il render completo (che puo' richiedere minuti).
+# ANTEPRIMA RAPIDA ANIMATA (BASSA RISOLUZIONE)
+# Breve GIF di pochi secondi, non un singolo frame statico: le illusioni di
+# tilt/motion dipendono dal drift nel tempo, una foto sola non le mostra.
+# Nessun encoding video/ffmpeg: solo una GIF leggera per un controllo veloce
+# prima del render completo (che puo' richiedere minuti).
 # ---------------------------------
-st.subheader("🔍 Anteprima rapida (bassa risoluzione)")
-PREVIEW_MAX_DIM = 260  # deliberatamente basso: e' solo un controllo visivo veloce
+st.subheader("🔍 Anteprima rapida animata (bassa risoluzione)")
+PREVIEW_MAX_DIM = 220       # deliberatamente basso: e' solo un controllo visivo veloce
+PREVIEW_FPS = 8
+PREVIEW_DURATION_SEC = 2.0
+PREVIEW_N_FRAMES = max(4, int(PREVIEW_FPS * PREVIEW_DURATION_SEC))
 
 if st.button("👁️ Genera anteprima"):
     if aspect_ratio == "16:9":
@@ -610,15 +715,17 @@ if st.button("👁️ Genera anteprima"):
         tmp_preview_audio = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
         tmp_preview_audio.write(uploaded_file.getvalue())
         tmp_preview_audio.close()
-        y_prev, sr_prev = librosa.load(tmp_preview_audio.name, sr=None, duration=2.0)
+        y_prev, sr_prev = librosa.load(tmp_preview_audio.name, sr=None, duration=PREVIEW_DURATION_SEC)
         duration_prev = float(librosa.get_duration(y=y_prev, sr=sr_prev))
-        preview_features = analyze_audio(tmp_preview_audio.name, max(duration_prev, 0.5), 10)
+        preview_features = analyze_audio(tmp_preview_audio.name, max(duration_prev, 0.5), PREVIEW_FPS)
         os.remove(tmp_preview_audio.name)
     else:
         st.caption("Nessun audio caricato: anteprima con valori audio neutri.")
         preview_features = {
             "tempo": 120.0,
-            "bass": np.full(10, 0.5), "mid": np.full(10, 0.5), "high": np.full(10, 0.5),
+            "bass": np.full(PREVIEW_N_FRAMES, 0.5),
+            "mid": np.full(PREVIEW_N_FRAMES, 0.5),
+            "high": np.full(PREVIEW_N_FRAMES, 0.5),
         }
 
     preview_intensity = intensity
@@ -640,17 +747,35 @@ if st.button("👁️ Genera anteprima"):
             if v is not None: preview_rotation_factor = v
 
     preview_seed = random.randint(1, 10000)
-    preview_img = generate_illusion_frame(
-        preview_size[0], preview_size[1], 5, preview_features,
-        preview_intensity, illusion_type, preview_seed,
-        preview_size_factor, preview_elements_factor, preview_rotation_factor
-    )
+    FULL_RENDER_FPS = 30  # deve combaciare con l'fps del render completo piu' sotto
+    with st.spinner(f"Generazione anteprima ({PREVIEW_N_FRAMES} frame, {preview_size[0]}×{preview_size[1]}px)..."):
+        preview_frames = []
+        for pf in range(PREVIEW_N_FRAMES):
+            # mappa il frame dell'anteprima allo stesso ritmo temporale reale
+            # del video finale (altrimenti il moto sembra rallentato/statico)
+            real_frame_equiv = int(pf * FULL_RENDER_FPS / PREVIEW_FPS)
+            frame_img = generate_illusion_frame(
+                preview_size[0], preview_size[1], real_frame_equiv, preview_features,
+                preview_intensity, illusion_type, preview_seed,
+                preview_size_factor, preview_elements_factor, preview_rotation_factor
+            )
+            frame_uint8 = (np.clip(frame_img, 0.0, 1.0) * 255).astype(np.uint8)
+            preview_frames.append(Image.fromarray(frame_uint8))
+
+        gif_buffer = io.BytesIO()
+        preview_frames[0].save(
+            gif_buffer, format="GIF", save_all=True,
+            append_images=preview_frames[1:], duration=int(1000 / PREVIEW_FPS),
+            loop=0,
+        )
+        gif_buffer.seek(0)
+
     st.image(
-        (np.clip(preview_img, 0.0, 1.0) * 255).astype(np.uint8),
-        caption=f"Anteprima {preview_size[0]}×{preview_size[1]}px — {illusion_type}",
+        gif_buffer.getvalue(),
+        caption=f"Anteprima animata {preview_size[0]}×{preview_size[1]}px, {PREVIEW_N_FRAMES} frame @ {PREVIEW_FPS}fps — {illusion_type}",
         width=preview_size[0] * 2,
     )
-    st.caption("Anteprima a bassa risoluzione: il video finale sara' generato alla risoluzione piena selezionata sopra.")
+    st.caption("Anteprima a bassa risoluzione/fps: il video finale sara' generato alla risoluzione e framerate pieni (30fps).")
 
 if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="primary"):
     # Salva l'audio con estensione coerente
@@ -781,11 +906,18 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         pass
 
     st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
-    st.info(
-        f"""
-        🧬 **Implementazione Scientifica Utilizzata:**
-        - **{illusion_type}**: Basato su ricerca neuropsicologica
-        - **Sincronizzazione Audio**: BPM→velocità transizioni, Bassi→movimenti globali, Medi→deformazioni, Alti→micro-dettagli
-        - **Algoritmi**: Mather & Takeuchi (Motion), Retinal Slip (Y-Junctions), Phi Motion Effects
-        """
+
+    report_text = build_loop507_report(
+        illusion_type=illusion_type, duration=duration, fps=fps, n_frames=n_frames,
+        size=size, bpm=tempo_display, seed=seed,
+        intensity=intensity, size_factor=element_size_factor,
+        elements_factor=num_elements_factor, rotation_factor=rotation_speed_factor,
+        use_keyframes=use_keyframes, video_title=video_title,
+    )
+    st.text(report_text)
+    st.download_button(
+        "📄 Scarica Report Bilingue (.txt)",
+        report_text,
+        file_name=f"loop507_report_{illusion_type.lower().replace(' ', '_').replace('(', '').replace(')', '')}.txt",
+        mime="text/plain",
     )
