@@ -226,10 +226,10 @@ ILLUSION_SCIENCE = {
 
 def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
                           seed, intensity, size_factor, elements_factor, rotation_factor,
-                          use_keyframes, video_title):
+                          use_keyframes, video_title, report_number=0):
     science = ILLUSION_SCIENCE.get(illusion_type, {"it": "-", "en": "-", "tags": []})
     base_tags = [
-        "loop507", "vjing", "creativecoding", "generativeart", "reactiveaudio",
+        "vjing", "creativecoding", "generativeart", "reactiveaudio",
         "algorithmicmusic", "pythonart", "audiovisualart", "synesthesia",
         "proceduralaudio", "digitalartists", "abstractmotion", "visualalchemy",
     ]
@@ -238,11 +238,16 @@ def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
     kf_note_it = "Sequenza keyframe attiva (parametri interpolati nel tempo)." if use_keyframes else "Parametri statici (nessun keyframe)."
     kf_note_en = "Keyframe sequence active (parameters interpolated over time)." if use_keyframes else "Static parameters (no keyframes)."
     title_line = f'Titolo sovraimpresso: "{video_title.strip()}"' if video_title.strip() else "Nessun titolo sovraimpresso."
-    title_line_en = f'Overlaid title: "{video_title.strip()}"' if video_title.strip() else "No overlaid title."
+    title_line_en = f'Overlay Title: "{video_title.strip()}"' if video_title.strip() else "No Overlay Title."
 
-    report = f"""LOOP507 :: VJING GENERATIVO :: REPORT DI GENERAZIONE
+    report = f"""VERSIONE ITALIANA :::
 
-:: IT ::
+[VJING GENERATIVO] // VOL _ {report_number:02d} // 
+
+Ogni fotogramma e' matematica pura che insegue il suono, nessuna rete neurale nel mezzo.
+
+:: REPORT DI GENERAZIONE ::
+
 Illusione     :: {illusion_type}
 Base tecnica  :: {science['it']}
 Formato       :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frame ({duration:.2f}s)
@@ -253,20 +258,31 @@ Keyframe      :: {kf_note_it}
 Titolo        :: {title_line}
 Sync audio    :: bassi->dimensione/ampiezza celle | medi->sfasamento/drift | acuti->spessore linee/microdettagli
 
-Ogni fotogramma e' matematica pura che insegue il suono, nessuna rete neurale nel mezzo.
+Regia e Algoritmo: Loop507
 
-:: EN ::
-Illusion      :: {illusion_type}
-Technical base:: {science['en']}
-Format        :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frames ({duration:.2f}s)
-Detected BPM  :: {bpm:.1f}
-Seed          :: {seed}
-Parameters    :: intensity={intensity:.2f} | size={size_factor:.2f} | elements={elements_factor:.2f} | rotation={rotation_factor:.2f}
-Keyframes     :: {kf_note_en}
-Title         :: {title_line_en}
-Audio sync    :: bass->cell size/amplitude | mids->phase shift/drift | highs->line thickness/micro-detail
+{hashtags}
 
-Every frame is pure math chasing sound, no neural net in between.
+------
+
+VERSIONE INGLESE:
+
+[GENERATIVE VJING] // VOL _ {report_number:02d} //
+
+Each frame is pure mathematics tracking the sound, no neural network in between.
+
+:: GENERATION REPORT ::
+
+Illusion :: {illusion_type}
+Technical Base :: {science['en']}
+Format :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frames ({duration:.2f}s)
+Detected BPM :: {bpm:.1f}
+Seed :: {seed}
+Parameters :: intensity={intensity:.2f} | size={size_factor:.2f} | elements={elements_factor:.2f} | rotation={rotation_factor:.2f}
+Keyframe :: {kf_note_en}
+Title :: {title_line_en}
+Audio Sync :: Bass -> Cell Size/Amplitude | Mid -> Phase Shift/Drift | Treble -> Line Thickness/Microdetails
+
+Director and Algorithm: Loop507
 
 {hashtags}
 """
@@ -1097,13 +1113,15 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
     with open(output_file.name, "rb") as f:
         video_bytes = f.read()
 
+    report_counter = st.session_state.get("loop507_report_counter", 0)
     report_text = build_loop507_report(
         illusion_type=illusion_type, duration=duration, fps=fps, n_frames=n_frames,
         size=size, bpm=tempo_display, seed=seed,
         intensity=intensity, size_factor=element_size_factor,
         elements_factor=num_elements_factor, rotation_factor=rotation_speed_factor,
-        use_keyframes=use_keyframes, video_title=video_title,
+        use_keyframes=use_keyframes, video_title=video_title, report_number=report_counter,
     )
+    st.session_state["loop507_report_counter"] = report_counter + 1
     safe_name = illusion_type.lower().replace(" ", "_").replace("(", "").replace(")", "")
 
     st.session_state["loop507_video_bytes"] = video_bytes
