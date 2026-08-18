@@ -10,96 +10,12 @@ import random
 import ffmpeg
 from skimage.draw import line, polygon, disk
 
-# ---------------------------------
-# CONFIGURAZIONE PAGINA
-# ---------------------------------
-st.set_page_config(page_title="VJing Generativo", layout="wide")
-
-st.title("🎵 VJing Generativo - Illusioni Ottiche Scientifiche")
-st.caption("by Loop507 | Arte cinetica sincronizzata al suono con implementazioni neuropsicologiche accurate")
-
-# Sidebar
-st.sidebar.header("⚙️ Controlli")
-
-uploaded_file = st.file_uploader("🎵 Carica un file audio (.mp3 o .wav)", type=["mp3", "wav"])
-
-st.sidebar.subheader("🎨 Personalizzazione Colori")
-line_color = st.sidebar.color_picker("Colore linee/forme", "#FFFFFF")
-bg_color = st.sidebar.color_picker("Colore sfondo", "#000000")
-
-illusion_type = st.sidebar.selectbox(
-    "🌀 Tipo di Illusione",
-    [
-        "Illusory Tilt (Line)", "Illusory Tilt (Mixed)", "Illusory Tilt (Edge)",
-        "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
-        "Y-Junctions", "Drifting Spines", "Spiral Illusion", "Zollner Illusion"
-    ]
-)
 
 # ---------------------------------
-# SEZIONE KEYFRAME AGGIORNATA
+# FUNZIONI E COSTANTI (definite prima di qualsiasi codice UI,
+# cosi' ogni blocco Streamlit puo' chiamarle senza problemi di ordine)
 # ---------------------------------
-st.sidebar.subheader("🎥 Sequenza Keyframe (avanzato)")
-use_keyframes = st.sidebar.checkbox("Usa Sequenza Keyframe", value=False)
 
-keyframes_intensity = {}
-keyframes_size = {}
-keyframes_elements = {}
-keyframes_rotation = {}  # NUOVO: Keyframe per la velocità di rotazione
-
-if use_keyframes:
-    st.sidebar.caption("Definisci i keyframe (tempo_in_secondi:valore).")
-    st.sidebar.info("Esempio:\n0:1.0\n10:1.5\n20:0.8")
-
-    intensity_str = st.sidebar.text_area("Keyframes Intensità", height=100)
-    size_str = st.sidebar.text_area("Keyframes Dimensione", height=100)
-    elements_str = st.sidebar.text_area("Keyframes Numero Elementi", height=100)
-    rotation_str = st.sidebar.text_area("Keyframes Velocità Rotazione", height=100) # NUOVO
-
-    # Valori di fallback se non si usano i keyframe
-    intensity = 1.0
-    element_size_factor = 1.0
-    num_elements_factor = 1.0
-    rotation_speed_factor = 1.0 # NUOVO
-
-    def parse_keyframes(keyframe_string):
-        keyframes_dict = {}
-        for kf_line in keyframe_string.split('\n'):
-            kf_line = kf_line.strip()
-            if kf_line:
-                try:
-                    time_str, value_str = kf_line.split(':')
-                    time = float(time_str.strip())
-                    value = float(value_str.strip())
-                    keyframes_dict[time] = value
-                except ValueError:
-                    st.sidebar.warning(f"Formato keyframe non valido: '{kf_line}'. Ignorato.")
-        return keyframes_dict
-
-    keyframes_intensity = parse_keyframes(intensity_str)
-    keyframes_size = parse_keyframes(size_str)
-    keyframes_elements = parse_keyframes(elements_str)
-    keyframes_rotation = parse_keyframes(rotation_str) # NUOVO
-else:
-    st.sidebar.subheader("🎨 Controlli Illusione")
-    intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
-    element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
-    num_elements_factor = st.sidebar.slider("🔢 Fattore Elementi", 0.1, 2.0, 1.0, 0.1)
-    rotation_speed_factor = st.sidebar.slider("🔄 Velocità Rotazione", 0.0, 2.0, 1.0, 0.1) # NUOVO
-
-
-st.sidebar.subheader("📝 Titolo Video")
-video_title = st.text_input("Testo del titolo", "")
-font_size = st.sidebar.slider("Grandezza carattere", 20, 100, 48, 2)
-vertical_position = st.sidebar.selectbox("Posizione verticale", ["Sopra", "Sotto", "Centro"])
-horizontal_position = st.sidebar.selectbox("Posizione orizzontale", ["Sinistra", "Destra", "Centro"])
-
-aspect_ratio = st.selectbox("📺 Formato video", ["16:9", "1:1", "9:16"])
-
-
-# ---------------------------------
-# ANALISI AUDIO
-# ---------------------------------
 def analyze_audio(audio_path, duration, fps):
     y, sr = librosa.load(audio_path, sr=None)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
@@ -131,10 +47,6 @@ def analyze_audio(audio_path, duration, fps):
     if high_values.max()>0: high_values /= high_values.max()
 
     return {"tempo": tempo, "bass": bass_values, "mid": mid_values, "high": high_values}
-
-# ---------------------------------
-# UTILS DISEGNO / COLORI
-# ---------------------------------
 
 def apply_colors(img, line_color, bg_color):
     """Applica i colori personalizzati a un'immagine mono-canale [0..1] -> RGB."""
@@ -244,9 +156,6 @@ def escape_drawtext(text: str) -> str:
             .replace("'", "\\'")     # '  -> \'
     )
 
-# ---------------------------------
-# REPORT BILINGUE :: LOOP507 ARCHIVE STYLE
-# ---------------------------------
 ILLUSION_SCIENCE = {
     "Illusory Tilt (Line)": {
         "it": "Kitaoka :: Line-type. Griglia bowtie a contrasto invertito con linea centrale; l'alternanza di polarita' a scacchiera genera l'inclinazione percepita.",
@@ -292,6 +201,26 @@ ILLUSION_SCIENCE = {
         "it": "Illusione di Zollner: linee parallele apparentemente inclinate da segmenti trasversali.",
         "en": "Zollner illusion: parallel lines appear tilted due to crossing transversal segments.",
         "tags": ["zollner", "opticalillusion"],
+    },
+    "Cafe Wall": {
+        "it": "Fraser (1908) / Gregory & Heard (1979) :: Cafe Wall. Righe di quadrati sfalsati con mortar line che appare inclinata.",
+        "en": "Fraser (1908) / Gregory & Heard (1979) :: Cafe Wall. Offset square rows with a mortar line that appears tilted.",
+        "tags": ["cafewall", "kitaoka"],
+    },
+    "Checkered": {
+        "it": "Kitaoka (1998) / Lipps (1897) :: Checkered illusion. Scacchiera a bande sfasate, confine orizzontale percepito inclinato.",
+        "en": "Kitaoka (1998) / Lipps (1897) :: Checkered illusion. Banded, phase-shifted checkerboard with a perceptually tilted horizontal border.",
+        "tags": ["checkered", "kitaoka"],
+    },
+    "Shifted Edges": {
+        "it": "Kitaoka, Pinna & Brelstaff (2001/2004) :: Illusion of shifted edges. Bordo a zig-zag tra bande che appare inclinato.",
+        "en": "Kitaoka, Pinna & Brelstaff (2001/2004) :: Illusion of shifted edges. Zig-zag boundary between bands that appears tilted.",
+        "tags": ["shiftededges", "kitaoka"],
+    },
+    "Fraser Twisted Cords": {
+        "it": "Fraser (1908) :: Twisted cords. Corde ritorte bianco/nero su sfondo grigio, righe orizzontali percepite inclinate.",
+        "en": "Fraser (1908) :: Twisted cords. Black/white twisted cords on a gray field, horizontal rows perceived as tilted.",
+        "tags": ["fraser", "twistedcords"],
     },
 }
 
@@ -347,28 +276,27 @@ Every frame is pure math chasing sound, no neural net in between.
 """
     return report
 
-# ---------------------------------
-# ILLUSIONI SCIENTIFICHE
-# ---------------------------------
-
-def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
+def illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
     """
     ILLUSORY TILT - Line-type (Kitaoka).
     Griglia di celle bowtie: triangolo superiore e inferiore a contrasto invertito,
     separati da una linea centrale. L'alternanza di polarita' a scacchiera,
     con sfasamento riga per riga, genera l'illusione di inclinazione della linea.
     Vettorizzato: niente doppio loop per-cella, solo un loop leggero sulle righe.
+    pixel_scale riscala TUTTE le quantita' in pixel assoluti (base + termini
+    audio-reattivi): serve per rendere l'anteprima a bassa risoluzione una
+    vera miniatura del video finale, non solo la componente "base".
     """
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
     base_cell = 90.0
-    cell = int(base_cell / num_elements_factor * element_size_factor + bass_val * 20 * intensity)
-    cell = max(10, cell)
+    cell = int((base_cell / num_elements_factor * element_size_factor + bass_val * 20 * intensity) * pixel_scale)
+    cell = max(max(2, int(10 * pixel_scale)), cell)
     half_w = int(cell * 0.42)
     half_h = int(cell * 0.42)
-    line_width = max(1, int(1 + high_val * 4 * intensity))
+    line_width = max(1, int((1 + high_val * 4 * intensity) * pixel_scale))
     row_shift = int(frame * 0.3 * rotation_speed_factor * (0.3 + mid_val))
 
     top_mask, bottom_mask, top_val_pixel = make_bowtie_tiles(width, height, cell, half_w, half_h, row_shift)
@@ -382,7 +310,7 @@ def illusory_tilt_line_type(width, height, frame, audio_features, intensity, ele
             img[y0:y1, :] = bottom_val_pixel[cy if cy < height else height - 1, :][np.newaxis, :]
     return img
 
-def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
+def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
     """
     ILLUSORY TILT - Mixed-type (lines & edges).
     Stessa griglia bowtie del line-type, ma meta' delle celle mostra la linea
@@ -395,11 +323,11 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
     high_val = audio_features["high"][frame % len(audio_features["high"])]
 
     base_cell = 90.0
-    cell = int(base_cell / num_elements_factor * element_size_factor + bass_val * 20 * intensity)
-    cell = max(10, cell)
+    cell = int((base_cell / num_elements_factor * element_size_factor + bass_val * 20 * intensity) * pixel_scale)
+    cell = max(max(2, int(10 * pixel_scale)), cell)
     half_w = int(cell * 0.42)
     half_h = int(cell * 0.42)
-    line_width = max(1, int(1 + high_val * 4 * intensity))
+    line_width = max(1, int((1 + high_val * 4 * intensity) * pixel_scale))
     row_shift = int(frame * 0.3 * rotation_speed_factor * (0.3 + mid_val))
 
     top_mask, bottom_mask, top_val_pixel = make_bowtie_tiles(width, height, cell, half_w, half_h, row_shift)
@@ -422,7 +350,7 @@ def illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, el
             img[y0:y1, :] = np.where(row_line, row_val, img[y0:y1, :])
     return img
 
-def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
+def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
     """
     ILLUSORY TILT - Edge-type.
     Stessa griglia bowtie, senza linea: solo il bordo di contrasto tra i due
@@ -433,8 +361,8 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, ele
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
 
     base_cell = 90.0
-    cell = int(base_cell / num_elements_factor * element_size_factor + mid_val * 25 * intensity)
-    cell = max(10, cell)
+    cell = int((base_cell / num_elements_factor * element_size_factor + mid_val * 25 * intensity) * pixel_scale)
+    cell = max(max(2, int(10 * pixel_scale)), cell)
     half_w = int(cell * 0.42)
     half_h = int(cell * 0.42)
     row_shift = int(frame * 0.3 * rotation_speed_factor * (0.3 + bass_val))
@@ -444,7 +372,7 @@ def illusory_tilt_edge_type(width, height, frame, audio_features, intensity, ele
     img = np.where(top_mask, top_val_pixel, np.where(bottom_mask, bottom_val_pixel, 0.0))
     return img
 
-def illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
+def illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
     """
     ILLUSORY MOTION - Line-type / Edge-type <Mather's type>.
     Four-stroke apparent motion (phi / reversed phi) con cerchi a CONTORNO
@@ -457,8 +385,8 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity,
     tempo_factor = audio_features["tempo"] / 120.0
 
     base_cell = 110.0
-    cell = int(base_cell / num_elements_factor * element_size_factor)
-    cell = max(20, cell)
+    cell = int(base_cell / num_elements_factor * element_size_factor * pixel_scale)
+    cell = max(max(4, int(20 * pixel_scale)), cell)
     half = cell // 2
     min_radius = half * 0.35
     max_radius = half * 0.85 * (0.6 + 0.4 * bass_val * intensity)
@@ -472,7 +400,7 @@ def illusory_motion_mather_line(width, height, frame, audio_features, intensity,
             draw_four_stroke_cell(img, cx, cy, half, state, "outline", min_radius, max_radius)
     return img
 
-def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
+def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
     """
     ILLUSORY MOTION - Mixed-type <Takeuchi's type> (1997, cafe wall motion analogue).
     Come la variante Mather ma con cerchi PIENI (edge stimuli anziche' line
@@ -485,8 +413,8 @@ def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensi
     tempo_factor = audio_features["tempo"] / 120.0
 
     base_cell = 90.0
-    cell = int(base_cell / num_elements_factor * element_size_factor + mid_val * 25 * intensity)
-    cell = max(15, cell)
+    cell = int((base_cell / num_elements_factor * element_size_factor + mid_val * 25 * intensity) * pixel_scale)
+    cell = max(max(4, int(15 * pixel_scale)), cell)
     half = cell // 2
     min_radius = half * 0.3
     max_radius = half * 0.9 * (0.6 + 0.4 * high_val * intensity)
@@ -500,43 +428,45 @@ def illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensi
             draw_four_stroke_cell(img, cx, cy, half, state, "filled", min_radius, max_radius)
     return img
 
-def y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor): # AGGIORNATO
+def y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
-    
+
     base_square_size = 50.0
-    square_size = int(base_square_size / num_elements_factor * element_size_factor + bass_val * 40 * intensity)
-    square_size = max(1, square_size)
+    square_size = int((base_square_size / num_elements_factor * element_size_factor + bass_val * 40 * intensity) * pixel_scale)
+    square_size = max(max(1, int(1 * pixel_scale)), square_size)
     lateral_shift = int((frame * 0.5 * mid_val * intensity * rotation_speed_factor) % max(1, square_size)) # AGGIORNATO
+    marker_arm = max(1, int(5 * pixel_scale))
+    marker_arm_short = max(1, int(3 * pixel_scale))
 
     start_x = -lateral_shift
-    
+
     for y in range(0, height, square_size):
         for x in range(start_x, width + square_size, square_size):
             fill = (x//square_size + y//square_size) % 2 == 0
-            
+
             end_x, end_y = min(x + square_size, width), min(y + square_size, height)
             if end_x > 0 and end_y > 0 and x < width and y < height:
                 x1 = max(0, x)
                 y1 = max(0, y)
                 img[y1:end_y, x1:end_x] = 1.0 if fill else 0.0
-            
+
             if x > 0 and y > 0 and x < width and y < height:
                 jx, jy = x, y
                 for d in (-1, 0, 1):
-                    rr, cc = line(jy-5, jx+d, jy+5, jx+d)
+                    rr, cc = line(jy-marker_arm, jx+d, jy+marker_arm, jx+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
-                    rr, cc = line(jy+d, jx-5, jy+d, jx+5)
+                    rr, cc = line(jy+d, jx-marker_arm, jy+d, jx+marker_arm)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
-                    rr, cc = line(jy-3, jx-3+d, jy+3, jx+3+d)
+                    rr, cc = line(jy-marker_arm_short, jx-marker_arm_short+d, jy+marker_arm_short, jx+marker_arm_short+d)
                     valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
                     img[rr[valid], cc[valid]] = 0.5
     return img
 
-def drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor):
+def drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
     """
     DRIFTING SPINES ILLUSION.
     Texture densa di piccoli marcatori a farfalla (bowtie), come nel
@@ -550,9 +480,9 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
     tempo_factor = audio_features["tempo"] / 120.0
 
     base_spacing = 26.0
-    spacing = int(base_spacing / num_elements_factor * element_size_factor + bass_val * 8 * intensity)
-    spacing = max(6, spacing)
-    marker_half = max(2, int(spacing * 0.35))
+    spacing = int((base_spacing / num_elements_factor * element_size_factor + bass_val * 8 * intensity) * pixel_scale)
+    spacing = max(max(2, int(6 * pixel_scale)), spacing)
+    marker_half = max(1, int(spacing * 0.35))
 
     drift_speed = max(0.01, tempo_factor * intensity * rotation_speed_factor)
     drift_offset = (frame * drift_speed * 3) % spacing
@@ -569,14 +499,14 @@ def drifting_spines_illusion(width, height, frame, audio_features, intensity, el
         img[y0:y1, :] = np.roll(base_img[y0:y1, :], shift, axis=1)
 
     for x in range(0, width, max(2, spacing // 2)):
-        hy = int(height // 2 + 40 * np.sin(x * 0.05 * rotation_speed_factor + drift_offset * 0.1))
+        hy = int(height // 2 + 40 * pixel_scale * np.sin(x * 0.05 * rotation_speed_factor + drift_offset * 0.1))
         if 0 <= hy < height:
-            radius = max(1, int(2 + high_val * 3 * intensity))
+            radius = max(1, int((2 + high_val * 3 * intensity) * pixel_scale))
             rr, cc = disk((hy, x), radius, shape=(height, width))
             img[rr, cc] = 0.7
     return img
 
-def spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor): # AGGIORNATO
+def spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
@@ -595,24 +525,24 @@ def spiral_illusion(width, height, frame, audio_features, intensity, element_siz
             y = int(cy + r * np.sin(angle))
             if 0 <= x < width and 0 <= y < height:
                 intensity_val = 0.8 + 0.2 * np.sin(r * 0.1 + rotation_speed)
-                radius = max(1, int(2 + bass_val * 3))
+                radius = max(1, int((2 + bass_val * 3) * pixel_scale))
                 rr, cc = disk((y, x), radius, shape=(height, width))
                 img[rr, cc] = intensity_val
     return img
 
-def zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor): # AGGIORNATO
+def zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     img = np.zeros((height, width), dtype=float)
     bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
     mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
     high_val = audio_features["high"][frame % len(audio_features["high"])]
     
     base_spacing = 70.0
-    line_spacing = int(base_spacing / num_elements_factor * element_size_factor + bass_val * 20 * intensity)
-    line_spacing = max(1, line_spacing)
+    line_spacing = int((base_spacing / num_elements_factor * element_size_factor + bass_val * 20 * intensity) * pixel_scale)
+    line_spacing = max(max(1, int(1 * pixel_scale)), line_spacing)
     
     oblique_angle = np.radians(45 + mid_val * 45)
     
-    horizontal_shift = int(high_val * 10 * rotation_speed_factor) # AGGIORNATO
+    horizontal_shift = int(high_val * 10 * rotation_speed_factor * pixel_scale) # AGGIORNATO
 
     for x in range(0, width + line_spacing, line_spacing):
         x_shifted = x + horizontal_shift
@@ -620,8 +550,8 @@ def zollner_illusion(width, height, frame, audio_features, intensity, element_si
         valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
         img[rr[valid], cc[valid]] = 1.0
 
-        for y in range(0, height, int(line_spacing / 2)):
-            length = int(10 * element_size_factor)
+        for y in range(0, height, max(1, int(line_spacing / 2))):
+            length = int(10 * element_size_factor * pixel_scale)
             ex = int(x_shifted + length * np.cos(oblique_angle))
             ey = int(y + length * np.sin(oblique_angle))
             rr, cc = line(y, x_shifted, ey, ex)
@@ -636,35 +566,169 @@ def zollner_illusion(width, height, frame, audio_features, intensity, element_si
             
     return img
 
-def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor): # AGGIORNATO
+def cafe_wall_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    CAFE WALL ILLUSION (Fraser 1908; Gregory & Heard 1979).
+    File di quadrati neri/bianchi sfalsati di mezzo periodo tra righe
+    adiacenti, separate da una sottile linea grigia ("mortar"): la mortar
+    line appare inclinata anche se e' perfettamente orizzontale.
+    Completamente vettorizzato (meshgrid + modulo), nessun loop Python.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    base_square = 60.0
+    square_size = int((base_square / num_elements_factor * element_size_factor + bass_val * 20 * intensity) * pixel_scale)
+    square_size = max(max(3, int(6 * pixel_scale)), square_size)
+    mortar_width = max(1, int((1 + high_val * 3 * intensity) * pixel_scale))
+    row_height = square_size + mortar_width
+    drift = int(frame * 0.6 * rotation_speed_factor * (0.2 + mid_val))
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    row_idx = yv // row_height
+    within_row_y = yv % row_height
+    is_mortar = within_row_y >= square_size
+    row_shift = (square_size // 2) * (row_idx % 2) + drift
+    col_pattern = ((xv + row_shift) // square_size) % 2
+    img = np.where(is_mortar, 0.5, col_pattern.astype(float))
+    return img
+
+def checkered_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    CHECKERED / ENHANCED CHECKERED ILLUSION (Kitaoka 1998; Lipps 1897).
+    Scacchiera classica divisa in bande orizzontali; ogni banda e' sfasata
+    di un quarto di cella rispetto alla precedente, cosi' che il confine
+    orizzontale tra bande appaia ripetutamente inclinato lungo lo schermo.
+    Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    base_cell = 45.0
+    cell = int((base_cell / num_elements_factor * element_size_factor + bass_val * 15 * intensity) * pixel_scale)
+    cell = max(max(3, int(6 * pixel_scale)), cell)
+    rows_per_band = max(1, int(3 * num_elements_factor))
+    band_height = cell * rows_per_band
+    drift = int(frame * 0.5 * rotation_speed_factor * (0.2 + mid_val))
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    band_idx = yv // max(1, band_height)
+    shift = (cell // 4) * (band_idx % 4) + drift
+    col_idx = (xv + shift) // cell
+    row_idx_local = yv // cell
+    img = ((col_idx + row_idx_local) % 2).astype(float)
+    return img
+
+def shifted_edges_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    ILLUSION OF SHIFTED EDGES (Kitaoka, Pinna & Brelstaff, 2001/2004).
+    Bande orizzontali bianco/nero il cui confine e' spostato in verticale a
+    zig-zag (colonne alterne), producendo un confine percepito come
+    inclinato pur essendo orizzontale in media. Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    n_bands = max(2, int(6 * num_elements_factor))
+    band_h = max(4, int(height / n_bands))
+    block_w = int((40.0 * element_size_factor + mid_val * 30 * intensity) * pixel_scale)
+    block_w = max(max(2, int(4 * pixel_scale)), block_w)
+    shift_amount = max(1, int((2 + bass_val * (band_h * 0.35) * intensity) * pixel_scale))
+    drift = int(frame * 0.4 * rotation_speed_factor * (0.2 + high_val))
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    band_idx = yv // band_h
+    local_y = yv - band_idx * band_h
+    col_group = (xv + drift) // block_w
+    sign = np.where(col_group % 2 == 0, 1, -1)
+    boundary_local = band_h // 2 + shift_amount * sign
+    top_val = (band_idx % 2 == 0).astype(float)
+    bottom_val = 1.0 - top_val
+    img = np.where(local_y < boundary_local, top_val, bottom_val)
+    return img
+
+def fraser_twisted_cords_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    FRASER TWISTED CORDS (Fraser, 1908).
+    Righe di "corde ritorte": segmenti diagonali bianco/nero alternati su
+    sfondo grigio, che fanno apparire inclinate righe in realta' orizzontali.
+    Template di un periodo costruito una volta per frame con formule
+    vettorizzate, poi tassellato con np.tile; drift orizzontale via np.roll
+    per riga (stesso pattern di drifting_spines_illusion).
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    base_period = 40.0
+    period = int((base_period / num_elements_factor * element_size_factor) * pixel_scale)
+    period = max(max(4, int(8 * pixel_scale)), period)
+    base_band_h = 30.0
+    band_h = int((base_band_h * element_size_factor) * pixel_scale)
+    band_h = max(max(4, int(8 * pixel_scale)), band_h)
+    tilt_px = int((period * 0.5) * (0.4 + bass_val * intensity))
+    thickness = max(1, int((2 + high_val * 3 * intensity) * pixel_scale))
+    drift_speed = max(0.01, mid_val * intensity * rotation_speed_factor)
+    drift_offset = (frame * drift_speed * 4) % period
+
+    yy, xx = np.mgrid[0:band_h, 0:period]
+    line1_x = (tilt_px * yy) / max(1, band_h)
+    mask1 = np.abs(xx - line1_x) < max(1, thickness) / 2.0
+    line2_x = period / 2.0 + (tilt_px * yy) / max(1, band_h)
+    line2_x = line2_x % period
+    mask2 = np.abs(xx - line2_x) < max(1, thickness) / 2.0
+
+    template = np.full((band_h, period), 0.5, dtype=float)
+    template[mask1] = 1.0
+    template[mask2] = 0.0
+
+    n_rows = height // band_h + 2
+    n_cols = width // period + 2
+    base_img = np.tile(template, (n_rows, n_cols))[:height, :width]
+
+    img = np.zeros((height, width), dtype=float)
+    shift_int = int(round(drift_offset))
+    for row_idx, y0 in enumerate(range(0, height, band_h)):
+        y1 = min(height, y0 + band_h)
+        shift = shift_int if row_idx % 2 == 0 else -shift_int
+        img[y0:y1, :] = np.roll(base_img[y0:y1, :], shift, axis=1)
+    return img
+
+def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     np.random.seed(seed + frame)
 
     if illusion_type == "Illusory Tilt (Line)":
-        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = illusory_tilt_line_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Illusory Tilt (Mixed)":
-        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = illusory_tilt_mixed_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Illusory Tilt (Edge)":
-        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = illusory_tilt_edge_type(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Illusory Motion (Mather)":
-        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = illusory_motion_mather_line(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Illusory Motion (Takeuchi)":
-        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = illusory_motion_takeuchi_mixed(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Y-Junctions":
-        img = y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = y_junctions_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Drifting Spines":
-        img = drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = drifting_spines_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Spiral Illusion":
-        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Zollner Illusion":
-        img = zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = zollner_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Cafe Wall":
+        img = cafe_wall_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Checkered":
+        img = checkered_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Shifted Edges":
+        img = shifted_edges_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Fraser Twisted Cords":
+        img = fraser_twisted_cords_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     else:
-        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor)
+        img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     return apply_colors(img, line_color, bg_color)
 
-
-# ---------------------------------
-# LOGICA DI INTERPOLAZIONE
-# ---------------------------------
 def interpolate_value(time, keyframes):
     times = sorted(keyframes.keys())
     if not times:
@@ -690,19 +754,139 @@ def interpolate_value(time, keyframes):
 
 
 # ---------------------------------
-# MAIN
+# INTERFACCIA STREAMLIT E LOGICA APPLICATIVA
 # ---------------------------------
+
+st.set_page_config(page_title="VJing Generativo", layout="wide")
+
+st.title("🎵 VJing Generativo - Illusioni Ottiche Scientifiche")
+
+st.caption("by Loop507 | Arte cinetica sincronizzata al suono con implementazioni neuropsicologiche accurate")
+
+st.sidebar.header("⚙️ Controlli")
+
+uploaded_file = st.file_uploader("🎵 Carica un file audio (.mp3 o .wav)", type=["mp3", "wav"])
+
+st.sidebar.subheader("🎨 Personalizzazione Colori")
+
+line_color = st.sidebar.color_picker("Colore linee/forme", "#FFFFFF")
+
+bg_color = st.sidebar.color_picker("Colore sfondo", "#000000")
+
+illusion_type = st.sidebar.selectbox(
+    "🌀 Tipo di Illusione",
+    [
+        "Illusory Tilt (Line)", "Illusory Tilt (Mixed)", "Illusory Tilt (Edge)",
+        "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
+        "Y-Junctions", "Drifting Spines", "Spiral Illusion", "Zollner Illusion",
+        "Cafe Wall", "Checkered", "Shifted Edges", "Fraser Twisted Cords",
+    ]
+)
+
 # ---------------------------------
-# ANTEPRIMA RAPIDA ANIMATA (BASSA RISOLUZIONE)
-# Breve GIF di pochi secondi, non un singolo frame statico: le illusioni di
-# tilt/motion dipendono dal drift nel tempo, una foto sola non le mostra.
-# Nessun encoding video/ffmpeg: solo una GIF leggera per un controllo veloce
-# prima del render completo (che puo' richiedere minuti).
+# GRIGLIA DI MINIATURE :: una foto piccola per ogni effetto, cosi' si
+# riconosce subito il pattern senza doverselo ricordare a memoria.
+# Cachate (per nome + colori correnti) cosi' non vengono rigenerate ad
+# ogni rerun dello script, solo quando cambiano davvero i colori.
 # ---------------------------------
+@st.cache_data(show_spinner=False)
+def _generate_illusion_thumbnail(illusion_name, line_hex, bg_hex, thumb_w=110, thumb_h=64):
+    neutral_audio = {
+        "tempo": 120.0,
+        "bass": np.full(10, 0.5), "mid": np.full(10, 0.5), "high": np.full(10, 0.5),
+    }
+    thumb_pixel_scale = thumb_w / 1280.0
+    img = generate_illusion_frame(
+        thumb_w, thumb_h, 6, neutral_audio, 1.0, illusion_name, 7,
+        1.0, 1.0, 1.0, pixel_scale=thumb_pixel_scale,
+    )
+    return (np.clip(img, 0.0, 1.0) * 255).astype(np.uint8)
+
+with st.expander("🖼️ Anteprima di tutti gli effetti disponibili", expanded=False):
+    _thumb_names = [
+        "Illusory Tilt (Line)", "Illusory Tilt (Mixed)", "Illusory Tilt (Edge)",
+        "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
+        "Y-Junctions", "Drifting Spines", "Spiral Illusion", "Zollner Illusion",
+        "Cafe Wall", "Checkered", "Shifted Edges", "Fraser Twisted Cords",
+    ]
+    _thumb_cols = st.columns(4)
+    for _i, _name in enumerate(_thumb_names):
+        _thumb = _generate_illusion_thumbnail(_name, line_color, bg_color)
+        with _thumb_cols[_i % 4]:
+            st.image(_thumb, caption=_name, use_container_width=True)
+
+st.sidebar.subheader("🎥 Sequenza Keyframe (avanzato)")
+
+use_keyframes = st.sidebar.checkbox("Usa Sequenza Keyframe", value=False)
+
+keyframes_intensity = {}
+
+keyframes_size = {}
+
+keyframes_elements = {}
+
+keyframes_rotation = {}
+
+if use_keyframes:
+    st.sidebar.caption("Definisci i keyframe (tempo_in_secondi:valore).")
+    st.sidebar.info("Esempio:\n0:1.0\n10:1.5\n20:0.8")
+
+    intensity_str = st.sidebar.text_area("Keyframes Intensità", height=100)
+    size_str = st.sidebar.text_area("Keyframes Dimensione", height=100)
+    elements_str = st.sidebar.text_area("Keyframes Numero Elementi", height=100)
+    rotation_str = st.sidebar.text_area("Keyframes Velocità Rotazione", height=100) # NUOVO
+
+    # Valori di fallback se non si usano i keyframe
+    intensity = 1.0
+    element_size_factor = 1.0
+    num_elements_factor = 1.0
+    rotation_speed_factor = 1.0 # NUOVO
+
+    def parse_keyframes(keyframe_string):
+        keyframes_dict = {}
+        for kf_line in keyframe_string.split('\n'):
+            kf_line = kf_line.strip()
+            if kf_line:
+                try:
+                    time_str, value_str = kf_line.split(':')
+                    time = float(time_str.strip())
+                    value = float(value_str.strip())
+                    keyframes_dict[time] = value
+                except ValueError:
+                    st.sidebar.warning(f"Formato keyframe non valido: '{kf_line}'. Ignorato.")
+        return keyframes_dict
+
+    keyframes_intensity = parse_keyframes(intensity_str)
+    keyframes_size = parse_keyframes(size_str)
+    keyframes_elements = parse_keyframes(elements_str)
+    keyframes_rotation = parse_keyframes(rotation_str) # NUOVO
+else:
+    st.sidebar.subheader("🎨 Controlli Illusione")
+    intensity = st.sidebar.slider("🔥 Intensità effetti", 0.1, 2.0, 1.0, 0.1)
+    element_size_factor = st.sidebar.slider("📏 Densità/Dimensione", 0.5, 2.0, 1.0, 0.1)
+    num_elements_factor = st.sidebar.slider("🔢 Fattore Elementi", 0.1, 2.0, 1.0, 0.1)
+    rotation_speed_factor = st.sidebar.slider("🔄 Velocità Rotazione", 0.0, 2.0, 1.0, 0.1)
+
+st.sidebar.subheader("📝 Titolo Video")
+
+video_title = st.text_input("Testo del titolo", "")
+
+font_size = st.sidebar.slider("Grandezza carattere", 20, 100, 48, 2)
+
+vertical_position = st.sidebar.selectbox("Posizione verticale", ["Sopra", "Sotto", "Centro"])
+
+horizontal_position = st.sidebar.selectbox("Posizione orizzontale", ["Sinistra", "Destra", "Centro"])
+
+aspect_ratio = st.selectbox("📺 Formato video", ["16:9", "1:1", "9:16"])
+
 st.subheader("🔍 Anteprima rapida animata (bassa risoluzione)")
-PREVIEW_MAX_DIM = 220       # deliberatamente basso: e' solo un controllo visivo veloce
+
+PREVIEW_MAX_DIM = 220
+
 PREVIEW_FPS = 8
+
 PREVIEW_DURATION_SEC = 2.0
+
 PREVIEW_N_FRAMES = max(4, int(PREVIEW_FPS * PREVIEW_DURATION_SEC))
 
 if st.button("👁️ Genera anteprima"):
@@ -759,11 +943,11 @@ if st.button("👁️ Genera anteprima"):
             v = interpolate_value(0.0, keyframes_rotation)
             if v is not None: preview_rotation_factor = v
 
-    # Le funzioni di illusione usano dimensioni cella/elemento in pixel
-    # assoluti: senza questo riscalamento, a bassa risoluzione la griglia
-    # avrebbe meno celle (pattern piu' "grosso") invece di essere una
-    # miniatura fedele del video finale.
-    preview_size_factor_scaled = preview_size_factor * preview_scale
+    # pixel_scale riscala TUTTE le quantita' in pixel assoluti (base +
+    # termini audio-reattivi) dentro le funzioni di illusione: senza,
+    # a bassa risoluzione la griglia sarebbe piu' "grossa" (meno celle)
+    # invece di essere una miniatura fedele del video finale.
+    preview_pixel_scale = preview_scale
 
     preview_seed = random.randint(1, 10000)
     FULL_RENDER_FPS = 30  # deve combaciare con l'fps del render completo piu' sotto
@@ -776,7 +960,8 @@ if st.button("👁️ Genera anteprima"):
             frame_img = generate_illusion_frame(
                 preview_size[0], preview_size[1], real_frame_equiv, preview_features,
                 preview_intensity, illusion_type, preview_seed,
-                preview_size_factor_scaled, preview_elements_factor, preview_rotation_factor
+                preview_size_factor, preview_elements_factor, preview_rotation_factor,
+                pixel_scale=preview_pixel_scale,
             )
             frame_uint8 = (np.clip(frame_img, 0.0, 1.0) * 255).astype(np.uint8)
             preview_frames.append(Image.fromarray(frame_uint8))
@@ -937,11 +1122,6 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
     except Exception:
         pass
 
-# ---------------------------------
-# OUTPUT PERSISTENTE (video + report)
-# Fuori dal blocco "if st.button(...)": resta visibile anche dopo un rerun
-# causato da un click su un altro bottone (es. il download del report).
-# ---------------------------------
 if "loop507_video_bytes" in st.session_state:
     st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
     st.download_button(
