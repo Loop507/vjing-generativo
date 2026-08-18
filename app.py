@@ -242,9 +242,7 @@ def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
 
     report = f"""LOOP507 :: VJING GENERATIVO :: REPORT DI GENERAZIONE
 
-================================================================
-IT :: ITALIANO
-================================================================
+:: IT ::
 Illusione     :: {illusion_type}
 Base tecnica  :: {science['it']}
 Formato       :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frame ({duration:.2f}s)
@@ -257,9 +255,7 @@ Sync audio    :: bassi->dimensione/ampiezza celle | medi->sfasamento/drift | acu
 
 Ogni fotogramma e' matematica pura che insegue il suono, nessuna rete neurale nel mezzo.
 
-================================================================
-EN :: ENGLISH
-================================================================
+:: EN ::
 Illusion      :: {illusion_type}
 Technical base:: {science['en']}
 Format        :: {size[0]}x{size[1]}px, {fps}fps, {n_frames} frames ({duration:.2f}s)
