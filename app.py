@@ -2,8 +2,6 @@ import streamlit as st
 import librosa
 import numpy as np
 import cv2
-from PIL import Image
-import io
 import tempfile
 import os
 import random
@@ -1202,108 +1200,6 @@ horizontal_position = st.sidebar.selectbox("Posizione orizzontale", ["Sinistra",
 
 aspect_ratio = st.selectbox("📺 Formato video", ["16:9", "1:1", "9:16"])
 
-st.subheader("🔍 Anteprima rapida animata (bassa risoluzione)")
-
-PREVIEW_MAX_DIM = 220
-
-PREVIEW_FPS = 8
-
-PREVIEW_DURATION_SEC = 2.0
-
-PREVIEW_N_FRAMES = max(4, int(PREVIEW_FPS * PREVIEW_DURATION_SEC))
-
-if st.button("👁️ Genera anteprima"):
-    # Stessa mappatura risoluzione usata nel render completo piu' sotto:
-    # la preview deve essere una VERA miniatura proporzionale, non un
-    # pattern a griglia diversa solo perche' i pixel assoluti sono pochi.
-    if aspect_ratio == "16:9": full_target_size = (1280, 720)
-    elif aspect_ratio == "1:1": full_target_size = (720, 720)
-    else: full_target_size = (720, 1280)
-
-    if aspect_ratio == "16:9":
-        preview_size = (PREVIEW_MAX_DIM, int(PREVIEW_MAX_DIM * 9 / 16))
-    elif aspect_ratio == "1:1":
-        preview_size = (PREVIEW_MAX_DIM, PREVIEW_MAX_DIM)
-    else:
-        preview_size = (int(PREVIEW_MAX_DIM * 9 / 16), PREVIEW_MAX_DIM)
-
-    preview_scale = preview_size[0] / full_target_size[0]
-
-    if uploaded_file is not None:
-        ext = os.path.splitext(uploaded_file.name)[1].lower()
-        if ext not in (".wav", ".mp3"): ext = ".wav"
-        tmp_preview_audio = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-        tmp_preview_audio.write(uploaded_file.getvalue())
-        tmp_preview_audio.close()
-        y_prev, sr_prev = librosa.load(tmp_preview_audio.name, sr=None, duration=PREVIEW_DURATION_SEC)
-        duration_prev = float(librosa.get_duration(y=y_prev, sr=sr_prev))
-        preview_features = analyze_audio(tmp_preview_audio.name, max(duration_prev, 0.5), PREVIEW_FPS)
-        os.remove(tmp_preview_audio.name)
-    else:
-        st.caption("Nessun audio caricato: anteprima con valori audio neutri.")
-        preview_features = {
-            "tempo": 120.0,
-            "bass": np.full(PREVIEW_N_FRAMES, 0.5),
-            "mid": np.full(PREVIEW_N_FRAMES, 0.5),
-            "high": np.full(PREVIEW_N_FRAMES, 0.5),
-        }
-
-    preview_intensity = intensity
-    preview_size_factor = element_size_factor
-    preview_elements_factor = num_elements_factor
-    preview_rotation_factor = rotation_speed_factor
-    if use_keyframes:
-        if keyframes_intensity:
-            v = interpolate_value(0.0, keyframes_intensity)
-            if v is not None: preview_intensity = v
-        if keyframes_size:
-            v = interpolate_value(0.0, keyframes_size)
-            if v is not None: preview_size_factor = v
-        if keyframes_elements:
-            v = interpolate_value(0.0, keyframes_elements)
-            if v is not None: preview_elements_factor = v
-        if keyframes_rotation:
-            v = interpolate_value(0.0, keyframes_rotation)
-            if v is not None: preview_rotation_factor = v
-
-    # pixel_scale riscala TUTTE le quantita' in pixel assoluti (base +
-    # termini audio-reattivi) dentro le funzioni di illusione: senza,
-    # a bassa risoluzione la griglia sarebbe piu' "grossa" (meno celle)
-    # invece di essere una miniatura fedele del video finale.
-    preview_pixel_scale = preview_scale
-
-    preview_seed = random.randint(1, 10000)
-    FULL_RENDER_FPS = 30  # deve combaciare con l'fps del render completo piu' sotto
-    with st.spinner(f"Generazione anteprima ({PREVIEW_N_FRAMES} frame, {preview_size[0]}×{preview_size[1]}px)..."):
-        preview_frames = []
-        for pf in range(PREVIEW_N_FRAMES):
-            # mappa il frame dell'anteprima allo stesso ritmo temporale reale
-            # del video finale (altrimenti il moto sembra rallentato/statico)
-            real_frame_equiv = int(pf * FULL_RENDER_FPS / PREVIEW_FPS)
-            frame_img = generate_illusion_frame(
-                preview_size[0], preview_size[1], real_frame_equiv, preview_features,
-                preview_intensity, illusion_type, preview_seed,
-                preview_size_factor, preview_elements_factor, preview_rotation_factor,
-                pixel_scale=preview_pixel_scale,
-            )
-            frame_uint8 = (np.clip(frame_img, 0.0, 1.0) * 255).astype(np.uint8)
-            preview_frames.append(Image.fromarray(frame_uint8))
-
-        gif_buffer = io.BytesIO()
-        preview_frames[0].save(
-            gif_buffer, format="GIF", save_all=True,
-            append_images=preview_frames[1:], duration=int(1000 / PREVIEW_FPS),
-            loop=0,
-        )
-        gif_buffer.seek(0)
-
-    st.image(
-        gif_buffer.getvalue(),
-        caption=f"Anteprima animata {preview_size[0]}×{preview_size[1]}px, {PREVIEW_N_FRAMES} frame @ {PREVIEW_FPS}fps — {illusion_type}",
-        width=preview_size[0] * 2,
-    )
-    st.caption("Anteprima a bassa risoluzione/fps: il video finale sara' generato alla risoluzione e framerate pieni (30fps).")
-
 if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="primary"):
     # Salva l'audio con estensione coerente
     ext = os.path.splitext(uploaded_file.name)[1].lower()
@@ -1417,6 +1313,35 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         final = ffmpeg.output(video_stream, audio_stream, output_file.name, **output_kwargs)
         ffmpeg.run(final, overwrite_output=True, quiet=True)
 
+    # ---------------------------------
+    # ANTEPRIMA VIDEO A 380p
+    # Downscale veloce (ffmpeg scale + preset veryfast) del file gia'
+    # generato: non serve ri-renderizzare i frame, solo transcodificare.
+    # Il lato corto del video viene portato a 380px mantenendo l'aspect ratio.
+    # ---------------------------------
+    with st.spinner("🔎 Preparazione anteprima 380p..."):
+        preview_short_side = 380
+        if size[0] <= size[1]:
+            preview_w = preview_short_side
+            preview_h = int(round(size[1] * preview_short_side / size[0] / 2) * 2)
+        else:
+            preview_h = preview_short_side
+            preview_w = int(round(size[0] * preview_short_side / size[1] / 2) * 2)
+
+        preview_output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        (
+            ffmpeg
+            .input(output_file.name)
+            .output(
+                preview_output_file.name,
+                vf=f"scale={preview_w}:{preview_h}",
+                vcodec="libx264", acodec="aac", preset="veryfast", crf=30,
+            )
+            .run(overwrite_output=True, quiet=True)
+        )
+        with open(preview_output_file.name, "rb") as pf:
+            preview_video_bytes = pf.read()
+
     # Leggo i byte in memoria e li salvo in session_state: un download_button
     # (compreso quello del report) fa ripartire da capo lo script, e senza
     # session_state tutto cio' che era dentro "if st.button(...)" sparirebbe
@@ -1437,6 +1362,7 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
 
     st.session_state["loop507_video_bytes"] = video_bytes
     st.session_state["loop507_video_filename"] = f"vjing_{safe_name}_output.mp4"
+    st.session_state["loop507_preview_video_bytes"] = preview_video_bytes
     st.session_state["loop507_report_text"] = report_text
     st.session_state["loop507_report_filename"] = f"loop507_report_{safe_name}.txt"
 
@@ -1444,11 +1370,14 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
         os.remove(tmp_audio.name)
         os.remove(tmp_video.name)
         os.remove(output_file.name)
+        os.remove(preview_output_file.name)
     except Exception:
         pass
 
 if "loop507_video_bytes" in st.session_state:
     st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
+    st.video(st.session_state["loop507_preview_video_bytes"])
+    st.caption("Anteprima a 380p — il download qui sotto e' alla risoluzione piena scelta in fase di generazione.")
     st.download_button(
         "📥 Scarica Video Illusorio Scientifico",
         st.session_state["loop507_video_bytes"],
