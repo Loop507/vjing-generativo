@@ -222,6 +222,41 @@ ILLUSION_SCIENCE = {
         "en": "Fraser (1908) :: Twisted cords. Black/white twisted cords on a gray field, horizontal rows perceived as tilted.",
         "tags": ["fraser", "twistedcords"],
     },
+    "Rotating Snakes": {
+        "it": "Kitaoka & Ashida (2003) :: Rotating Snakes / Fraser-Wilcox. Gradino di luminanza a 4 livelli asimmetrico che genera rotazione illusoria spontanea.",
+        "en": "Kitaoka & Ashida (2003) :: Rotating Snakes / Fraser-Wilcox. Asymmetric 4-level luminance step generating spontaneous illusory rotation.",
+        "tags": ["rotatingsnakes", "fraserwilcox", "kitaoka"],
+    },
+    "Ouchi-Spillmann": {
+        "it": "Ouchi (1977) / Spillmann :: Disco a scacchiera orizzontale su sfondo a scacchiera verticale, il centro sembra scivolare.",
+        "en": "Ouchi (1977) / Spillmann :: Horizontally-checked disk on a vertically-checked field, the center appears to slide.",
+        "tags": ["ouchispillmann"],
+    },
+    "Pinna-Brelstaff": {
+        "it": "Pinna & Brelstaff (2000) :: Anelli di rettangoli obliqui a tilt invertito; lo zoom pulsato genera rotazione illusoria opposta tra anelli.",
+        "en": "Pinna & Brelstaff (2000) :: Rings of oblique rectangles with inverted tilt; pulsed zoom generates opposite illusory rotation between rings.",
+        "tags": ["pinnabrelstaff"],
+    },
+    "Hermann Grid": {
+        "it": "Hermann (1870) :: Griglia chiara su sfondo scuro, macchie grigie fantasma alle intersezioni per inibizione laterale.",
+        "en": "Hermann (1870) :: Light grid on dark background, ghost gray blobs at intersections from lateral inhibition.",
+        "tags": ["hermanngrid"],
+    },
+    "Scintillating Grid": {
+        "it": "Lingelbach & Schrauf (1994/1997) :: Dischi bianchi su griglia grigia, scintillano scuri se non fissati direttamente.",
+        "en": "Lingelbach & Schrauf (1994/1997) :: White discs on a gray grid, scintillate dark when not directly fixated.",
+        "tags": ["scintillatinggrid"],
+    },
+    "Kanizsa Triangle": {
+        "it": "Kanizsa (1955) :: Contorni illusori. Terzetti di Pac-Man generano un triangolo bianco percepito che non esiste nei dati.",
+        "en": "Kanizsa (1955) :: Illusory contours. Pac-Man triplets generate a perceived white triangle absent from the actual image data.",
+        "tags": ["kanizsa", "illusorycontours"],
+    },
+    "Adelson Checkershadow": {
+        "it": "Adelson (1995) :: Costanza di luminosita'. Un'ombra che scorre altera la luminosita' percepita di caselle identiche.",
+        "en": "Adelson (1995) :: Lightness constancy. A sweeping shadow alters the perceived brightness of identically-valued squares.",
+        "tags": ["checkershadow", "adelson"],
+    },
 }
 
 def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
@@ -708,6 +743,264 @@ def fraser_twisted_cords_illusion(width, height, frame, audio_features, intensit
         img[y0:y1, :] = np.roll(base_img[y0:y1, :], shift, axis=1)
     return img
 
+def rotating_snakes_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    ROTATING SNAKES / FRASER-WILCOX ILLUSION (Kitaoka & Ashida, 2003; Fraser
+    & Wilcox, 1979). Anelli concentrici con un gradino di luminanza a 4
+    livelli asimmetrico (nero, grigio scuro, bianco, grigio chiaro) che
+    attiva i rilevatori di direzione/moto della corteccia visiva, generando
+    la percezione di rotazione spontanea pur essendo il pattern statico.
+    Anelli adiacenti hanno il "dente di sega" invertito (direzione opposta),
+    come nella figura classica multi-anello di Kitaoka.
+    Completamente vettorizzato in coordinate polari.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    base_ring_width = 45.0
+    ring_width = max(max(3, int(6 * pixel_scale)), int((base_ring_width * element_size_factor + bass_val * 15 * intensity) * pixel_scale))
+    n_segments = max(4, int(14 * num_elements_factor))
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    dx = xv - cx
+    dy = yv - cy
+    r = np.sqrt(dx * dx + dy * dy)
+    theta = np.arctan2(dy, dx)
+
+    ring_idx = (r // ring_width).astype(int)
+    direction = np.where(ring_idx % 2 == 0, 1.0, -1.0)
+    spin = frame * 0.06 * rotation_speed_factor * (0.3 + mid_val) + high_val * 0.15
+    segment_angle = 2 * np.pi / n_segments
+    local_theta = (theta * direction + spin) % segment_angle
+    frac = local_theta / segment_angle
+
+    # Gradino asimmetrico a 4 livelli (proporzioni tipiche Fraser-Wilcox)
+    b0, b1, b2 = 0.12, 0.5, 0.62
+    img = np.select(
+        [frac < b0, frac < b1, frac < b2],
+        [0.0, 0.35, 1.0],
+        default=0.68,
+    )
+    return img
+
+def ouchi_spillmann_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    OUCHI-SPILLMANN ILLUSION (Ouchi, 1977; Spillmann, 2013).
+    Disco centrale con scacchiera "orizzontale" (rettangoli larghi e bassi)
+    incastonato in uno sfondo con scacchiera "verticale" (rettangoli alti e
+    stretti): il centro appare scivolare/tremolare rispetto allo sfondo.
+    Un piccolo jitter di posizione per frame esagera l'effetto per il video
+    (l'illusione originale dipende dai micro-movimenti oculari).
+    Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    base_radius = min(width, height) * 0.28
+    center_radius = max(max(4, int(8 * pixel_scale)), int((base_radius * element_size_factor + bass_val * 20 * intensity) * pixel_scale))
+
+    base_block = 26.0
+    block_short = max(max(2, int(4 * pixel_scale)), int((base_block / num_elements_factor) * pixel_scale))
+    block_long = max(block_short * 2, int(block_short * (2.2 + mid_val)))
+
+    jitter = int(3 * pixel_scale * intensity * np.sin(frame * 0.5 * rotation_speed_factor + high_val * 3))
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    dx = xv - cx
+    dy = yv - cy
+    is_center = (dx * dx + dy * dy) <= (center_radius * center_radius)
+
+    # scacchiera centrale: rettangoli larghi (block_long) e bassi (block_short)
+    center_pattern = (((xv + jitter) // block_long) + (yv // block_short)) % 2
+
+    # scacchiera esterna: rettangoli alti (block_long) e stretti (block_short)
+    outer_pattern = ((xv // block_short) + ((yv + jitter) // block_long)) % 2
+
+    img = np.where(is_center, center_pattern, outer_pattern).astype(float)
+    return img
+
+def pinna_brelstaff_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    PINNA-BRELSTAFF ILLUSION (Pinna & Brelstaff, 2000).
+    Anelli concentrici di piccoli rettangoli obliqui, con tilt invertito tra
+    anello e anello. Nel fenomeno reale, avvicinandosi/allontanandosi dalla
+    figura gli anelli sembrano ruotare in direzioni opposte: qui lo zoom
+    reale e' animato nel tempo (pulsato dai bassi), che e' esattamente il
+    trigger fisico del fenomeno originale.
+    """
+    img = np.zeros((height, width), dtype=float)
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    n_rings = max(2, int(3 * num_elements_factor))
+    base_ring_gap = 55.0
+    ring_gap = max(max(4, int(8 * pixel_scale)), int((base_ring_gap * element_size_factor) * pixel_scale))
+
+    zoom = 1.0 + 0.35 * intensity * np.sin(frame * 0.08 * rotation_speed_factor * (0.4 + bass_val))
+    n_per_ring = max(6, int(16 * num_elements_factor))
+    rect_w = max(1, int((ring_gap * 0.45) * pixel_scale))
+    rect_h = max(1, int((ring_gap * 0.9) * pixel_scale))
+    tilt = np.radians(35 + mid_val * 15)
+
+    for ring_i in range(1, n_rings + 1):
+        radius = ring_i * ring_gap * zoom
+        ring_tilt = tilt if ring_i % 2 == 0 else -tilt
+        val = 1.0 if ring_i % 2 == 0 else 0.68
+        for j in range(n_per_ring):
+            angle = 2 * np.pi * j / n_per_ring + high_val * 0.3
+            ex, ey = cx + radius * np.cos(angle), cy + radius * np.sin(angle)
+            cos_t, sin_t = np.cos(ring_tilt), np.sin(ring_tilt)
+            local = np.array([
+                [-rect_w / 2, -rect_h / 2], [rect_w / 2, -rect_h / 2],
+                [rect_w / 2, rect_h / 2], [-rect_w / 2, rect_h / 2],
+            ])
+            rotated = np.array([
+                [p[0] * cos_t - p[1] * sin_t + ex, p[0] * sin_t + p[1] * cos_t + ey]
+                for p in local
+            ]).astype(int)
+            rr, cc = polygon(rotated[:, 1], rotated[:, 0], (height, width))
+            valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+            img[rr[valid], cc[valid]] = val
+    return img
+
+def hermann_grid_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    HERMANN GRID ILLUSION (Hermann, 1870).
+    Griglia di barre chiare su sfondo scuro: alle intersezioni appaiono
+    macchie grigie fantasma (inibizione laterale retinica), che spariscono
+    se si fissa direttamente l'incrocio. Spaziatura e spessore audio-reattivi
+    modulano quanto le macchie fantasma risultano percettivamente forti.
+    Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    base_cell = 55.0
+    cell = max(max(4, int(8 * pixel_scale)), int((base_cell / num_elements_factor * element_size_factor + bass_val * 15 * intensity) * pixel_scale))
+    bar_width = max(1, int((cell * 0.18 + high_val * 4 * intensity) * pixel_scale))
+    drift = int(frame * 0.3 * rotation_speed_factor)
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    local_x = (xv + drift) % cell
+    local_y = (yv + drift) % cell
+    img = ((local_x < bar_width) | (local_y < bar_width)).astype(float)
+    return img
+
+def scintillating_grid_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    SCINTILLATING GRID ILLUSION (Lingelbach & Schrauf, 1994; Schrauf, Lingelbach
+    & Wist, 1997). Griglia grigia su sfondo nero con dischi bianchi alle
+    intersezioni: i dischi sembrano "scintillare" scuri quando non fissati
+    direttamente. Qui il flicker per-disco e' animato esplicitamente (fase
+    diversa per ogni intersezione) per rendere l'effetto visibile in video.
+    Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    base_cell = 60.0
+    cell = max(max(6, int(10 * pixel_scale)), int((base_cell / num_elements_factor * element_size_factor + bass_val * 15 * intensity) * pixel_scale))
+    bar_width = max(1, int(cell * 0.14 * pixel_scale))
+    base_radius = cell * 0.28
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    local_x = xv % cell
+    local_y = yv % cell
+    dx = np.minimum(local_x, cell - local_x)
+    dy = np.minimum(local_y, cell - local_y)
+
+    cell_row = yv // cell
+    cell_col = xv // cell
+    flicker_speed = 0.15 * rotation_speed_factor * (0.3 + high_val)
+    phase = np.sin(frame * flicker_speed + (cell_row * 7 + cell_col * 13).astype(float))
+    radius = base_radius * (0.7 + 0.3 * (0.5 + 0.5 * phase) * (0.5 + mid_val))
+
+    dist2 = dx * dx + dy * dy
+    disc_mask = dist2 < (radius * radius)
+    grid_mask = (local_x < bar_width) | (local_y < bar_width)
+    img = np.where(disc_mask, 1.0, np.where(grid_mask, 0.5, 0.0))
+    return img
+
+def kanizsa_triangle_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    KANIZSA TRIANGLE ILLUSION (Kanizsa, 1955).
+    Terzetti di "Pac-Man" con lo spicchio mancante rivolto verso il centro
+    del gruppo: il cervello completa i bordi mancanti percependo un
+    triangolo bianco illusorio che non esiste nei dati dell'immagine.
+    Il gruppo intero ruota nel tempo (audio-reattivo); il template di una
+    singola cella viene costruito una volta per frame e tassellato con
+    np.tile, stesso pattern di make_bowtie_tiles.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    base_tile = 130.0
+    tile = max(max(10, int(20 * pixel_scale)), int((base_tile / num_elements_factor * element_size_factor) * pixel_scale))
+    pac_radius = tile * 0.22
+    orbit_radius = tile * 0.26
+    wedge_half_angle = np.radians(28 + bass_val * 20 * intensity)
+    rotation = frame * 0.04 * rotation_speed_factor * (0.3 + mid_val)
+
+    tcx, tcy = tile / 2.0, tile / 2.0
+    yy, xx = np.mgrid[0:tile, 0:tile]
+    pac_mask = np.zeros((tile, tile), dtype=bool)
+    for k in range(3):
+        angle_center = rotation + 2 * np.pi * k / 3
+        pcx = tcx + orbit_radius * np.cos(angle_center)
+        pcy = tcy + orbit_radius * np.sin(angle_center)
+        dx = xx - pcx
+        dy = yy - pcy
+        r = np.sqrt(dx * dx + dy * dy)
+        theta = np.arctan2(dy, dx)
+        cut_dir = angle_center + np.pi  # lo spicchio guarda verso il centro del gruppo
+        ang_diff = np.mod(theta - cut_dir + np.pi, 2 * np.pi) - np.pi
+        within_wedge = np.abs(ang_diff) < wedge_half_angle
+        pac_mask |= (r < pac_radius) & (~within_wedge)
+
+    template = pac_mask.astype(float)
+    n_rows = height // tile + 2
+    n_cols = width // tile + 2
+    img = np.tile(template, (n_rows, n_cols))[:height, :width]
+    return img
+
+def adelson_checkershadow_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    ADELSON CHECKERSHADOW ILLUSION (Adelson, 1995).
+    Scacchiera a valori di grigio fissi, attraversata da una banda d'ombra
+    morbida che ne altera la luminosita' percepita: caselle di identico
+    valore fisico appaiono diverse a seconda che siano dentro o fuori
+    l'ombra (costanza di luminosita'). La banda scorre nel tempo, pilotata
+    dai bassi. Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    base_cell = 50.0
+    cell = max(max(4, int(8 * pixel_scale)), int((base_cell / num_elements_factor * element_size_factor) * pixel_scale))
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    checker = ((xv // cell + yv // cell) % 2).astype(float)
+    base_val = 0.22 + 0.56 * checker
+
+    angle = np.radians(25 + mid_val * 30)
+    diag = width * np.cos(angle) + height * np.sin(angle)
+    band_center = ((frame * (0.8 + bass_val * 2.5) * rotation_speed_factor) % (diag * 1.6)) - diag * 0.3
+    band_width = max(40.0, diag * (0.28 + high_val * 0.12))
+
+    dist_along = xv * np.cos(angle) + yv * np.sin(angle) - band_center
+    shadow_factor = 1.0 - 0.45 * intensity * np.exp(-(dist_along ** 2) / (2 * (band_width / 2) ** 2))
+
+    img = base_val * shadow_factor
+    return img
+
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     np.random.seed(seed + frame)
 
@@ -737,6 +1030,20 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         img = shifted_edges_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Fraser Twisted Cords":
         img = fraser_twisted_cords_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Rotating Snakes":
+        img = rotating_snakes_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Ouchi-Spillmann":
+        img = ouchi_spillmann_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Pinna-Brelstaff":
+        img = pinna_brelstaff_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Hermann Grid":
+        img = hermann_grid_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Scintillating Grid":
+        img = scintillating_grid_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Kanizsa Triangle":
+        img = kanizsa_triangle_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Adelson Checkershadow":
+        img = adelson_checkershadow_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     else:
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     return apply_colors(img, line_color, bg_color)
@@ -792,6 +1099,8 @@ illusion_type = st.sidebar.selectbox(
         "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
         "Y-Junctions", "Drifting Spines", "Spiral Illusion", "Zollner Illusion",
         "Cafe Wall", "Checkered", "Shifted Edges", "Fraser Twisted Cords",
+        "Rotating Snakes", "Ouchi-Spillmann", "Pinna-Brelstaff",
+        "Hermann Grid", "Scintillating Grid", "Kanizsa Triangle", "Adelson Checkershadow",
     ]
 )
 
@@ -820,6 +1129,8 @@ with st.expander("🖼️ Anteprima di tutti gli effetti disponibili", expanded=
         "Illusory Motion (Mather)", "Illusory Motion (Takeuchi)",
         "Y-Junctions", "Drifting Spines", "Spiral Illusion", "Zollner Illusion",
         "Cafe Wall", "Checkered", "Shifted Edges", "Fraser Twisted Cords",
+        "Rotating Snakes", "Ouchi-Spillmann", "Pinna-Brelstaff",
+        "Hermann Grid", "Scintillating Grid", "Kanizsa Triangle", "Adelson Checkershadow",
     ]
     _thumb_cols = st.columns(4)
     for _i, _name in enumerate(_thumb_names):
