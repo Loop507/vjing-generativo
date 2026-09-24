@@ -285,6 +285,41 @@ ILLUSION_SCIENCE = {
         "en": "Pomerantz (1983); Macknik & Martinez-Conde (2008, Nat. Rev. Neurosci.) :: A rigid bar oscillated rapidly appears to flex like rubber, due to the differential response of end-stopped neurons (V1/MT) between the stimulus' endpoints and its center during motion.",
         "tags": ["rubberpencil", "endstoppedneurons"],
     },
+    "Wagon Wheel Illusion": {
+        "it": "Purves, Paydarfar & Andrews (1996, PNAS) :: Un disco a raggi che ruota sopra una soglia critica di velocita' viene percepito invertire il senso di rotazione, anche in luce continua (campionamento discreto della percezione).",
+        "en": "Purves, Paydarfar & Andrews (1996, PNAS) :: A spoked disk rotating past a critical speed threshold is perceived to reverse its direction of rotation, even under continuous illumination (discrete sampling of perception).",
+        "tags": ["wagonwheel", "purves"],
+    },
+    "Motion Aftereffect": {
+        "it": "Addams (1834); Mather, Verstraten & Anstis (1998, 'The Motion Aftereffect') :: Dopo un adattamento prolungato a un moto direzionale, un pattern statico appare muoversi nella direzione opposta.",
+        "en": "Addams (1834); Mather, Verstraten & Anstis (1998, 'The Motion Aftereffect') :: After prolonged adaptation to directional motion, a static pattern appears to move in the opposite direction.",
+        "tags": ["motionaftereffect", "waterfallillusion"],
+    },
+    "Flash-Lag Effect": {
+        "it": "Nijhawan (1994, Nature) :: Un oggetto in moto continuo e un flash statico co-localizzato nello stesso istante vengono percepiti disallineati: l'oggetto in moto appare in anticipo.",
+        "en": "Nijhawan (1994, Nature) :: A continuously moving object and a co-located static flash presented at the same instant are perceived as misaligned: the moving object appears to lead.",
+        "tags": ["flashlag", "nijhawan"],
+    },
+    "Line Motion Illusion": {
+        "it": "Hikosaka, Miyauchi & Shimojo (1993, Vision Research) :: Un cue attenzionale a un'estremita', seguito dall'apparizione istantanea di una linea statica, genera la percezione che la linea si stia disegnando in movimento.",
+        "en": "Hikosaka, Miyauchi & Shimojo (1993, Vision Research) :: An attentional cue at one end, followed by the instantaneous appearance of a static line, generates the perception of the line drawing itself in motion.",
+        "tags": ["linemotion", "hikosaka"],
+    },
+    "Motion-Induced Blindness": {
+        "it": "Bonneh, Cooperman & Sagi (2001, Nature) :: Bersagli statici salienti circondati da un pattern globale in movimento scompaiono e ricompaiono periodicamente dalla consapevolezza durante la fissazione.",
+        "en": "Bonneh, Cooperman & Sagi (2001, Nature) :: Salient static targets surrounded by a moving global pattern periodically disappear and reappear from awareness during fixation.",
+        "tags": ["motioninducedblindness", "bonneh"],
+    },
+    "Troxler Fading": {
+        "it": "Troxler (1804) :: Bersagli periferici statici su un campo omogeneo scompaiono dalla consapevolezza durante la fissazione prolungata del centro (adattamento neurale periferico).",
+        "en": "Troxler (1804) :: Static peripheral targets on a homogeneous field fade from awareness during prolonged central fixation (peripheral neural adaptation).",
+        "tags": ["troxlerfading"],
+    },
+    "McCollough Effect": {
+        "it": "McCollough (1965, Science) :: Adattamento a griglie con colore contingente all'orientamento; griglie acromatiche successive appaiono tinte del colore associato a quell'orientamento.",
+        "en": "McCollough (1965, Science) :: Adaptation to orientation-contingent colored gratings; subsequent achromatic gratings appear tinted with the color associated with that orientation.",
+        "tags": ["mccollougheffect", "colorcontingent"],
+    },
 }
 
 def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
@@ -1251,6 +1286,250 @@ def rubber_pencil_illusion(width, height, frame, audio_features, intensity, elem
     img = np.where(bar_mask, 1.0, 0.06)
     return img
 
+def wagon_wheel_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    CONTINUOUS WAGON WHEEL ILLUSION (Purves, Paydarfar & Andrews, 1996,
+    PNAS). Un disco a raggi equidistanti ruota: superata una soglia
+    critica di velocita' angolare, il sistema visivo percepisce inversioni
+    spontanee del senso di rotazione, anche in luce continua. Qui la
+    velocita' e' pilotata dal BPM e dai bassi: l'aliasing percettivo (lo
+    stesso principio del campionamento discreto dei fotogrammi cinema)
+    emerge dal rendering stesso quando la velocita' dei raggi supera la
+    soglia di Nyquist angolare rispetto al frame rate -- non e' un trucco
+    aggiunto, e' il fenomeno descritto nel paper.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    yv, xv = np.mgrid[0:height, 0:width]
+    dx = xv - cx
+    dy = yv - cy
+    r = np.sqrt(dx * dx + dy * dy)
+    theta = np.arctan2(dy, dx)
+
+    n_spokes = max(4, int(10 * num_elements_factor))
+    radius_max = min(width, height) * 0.42 * element_size_factor
+
+    angular_step = (0.15 + bass_val * 0.9) * rotation_speed_factor * intensity
+    spin = frame * angular_step
+
+    spoke_angle = 2 * np.pi / n_spokes
+    local_theta = (theta - spin) % spoke_angle
+    frac = local_theta / spoke_angle
+    spoke_width = 0.08 + 0.04 * bass_val
+    is_spoke = (frac < spoke_width) & (r < radius_max)
+    rim = np.abs(r - radius_max) < max(2, int(3 * pixel_scale))
+    hub = r < max(3, int(8 * pixel_scale))
+
+    img = np.where(is_spoke | rim | hub, 1.0, 0.05)
+    return img
+
+def motion_aftereffect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    MOTION AFTEREFFECT / WATERFALL ILLUSION (Addams, 1834; rassegna moderna
+    in Mather, Verstraten & Anstis, "The Motion Aftereffect", 1998). Dopo
+    un adattamento prolungato a un moto direzionale, un pattern statico
+    appare muoversi nella direzione opposta (desensibilizzazione
+    asimmetrica dei rilevatori di direzione). Qui si riproduce il
+    paradigma sperimentale: una texture a bande scorre per una fase di
+    "adattamento" pilotata dal ritmo, poi si arresta di colpo per una
+    fase di "test" -- l'aftereffect vero si manifesta nell'osservatore
+    subito dopo l'arresto.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    period_frames = max(30, int(90 / max(0.1, rotation_speed_factor)))
+    cycle = frame % period_frames
+    adapt_len = int(period_frames * 0.75)
+    is_adapt = cycle < adapt_len
+
+    stripe_w = max(4, int(24 * element_size_factor * pixel_scale))
+    speed = (3 + bass_val * 6) * intensity * pixel_scale
+    shift = cycle * speed if is_adapt else adapt_len * speed
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    img = (((yv + shift) // stripe_w) % 2).astype(float)
+    return img
+
+def flash_lag_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    FLASH-LAG EFFECT (Nijhawan, 1994, Nature). Un oggetto in moto continuo
+    e un flash statico, presentati nello stesso punto nello stesso
+    istante, vengono percepiti disallineati: l'oggetto in moto appare "in
+    anticipo" rispetto al flash. Qui un punto orbita a velocita' pilotata
+    dal BPM/bassi, e un anello lampeggia in sincronia col beat esattamente
+    nella posizione istantanea del punto in moto -- stesso paradigma
+    sperimentale del paper originale.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    orbit_r = min(width, height) * 0.3 * element_size_factor
+    ang_speed = (0.05 + bass_val * 0.15) * rotation_speed_factor * intensity
+    angle = frame * ang_speed
+    mx, my = cx + orbit_r * np.cos(angle), cy + orbit_r * np.sin(angle)
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    dot_r = max(3, int(10 * pixel_scale))
+    dist_sq = (xv - mx) ** 2 + (yv - my) ** 2
+    moving_dot = dist_sq <= dot_r ** 2
+
+    flash_period = max(6, int(24 / (0.3 + high_val)))
+    is_flash = (frame % flash_period) < 3
+    flash_ring = (dist_sq <= (dot_r + 6) ** 2) & (dist_sq > (dot_r + 2) ** 2) if is_flash else np.zeros_like(moving_dot)
+
+    orbit_path = np.abs(np.sqrt((xv - cx) ** 2 + (yv - cy) ** 2) - orbit_r) < 1
+    img = np.where(orbit_path, 0.15, 0.0)
+    img = np.where(flash_ring, 0.6, img)
+    img = np.where(moving_dot, 1.0, img)
+    return img
+
+def line_motion_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    LINE MOTION ILLUSION (Hikosaka, Miyauchi & Shimojo, 1993, Vision
+    Research). Un breve cue attenzionale a un'estremita', seguito
+    dall'apparizione istantanea di una linea statica per intero, genera
+    la percezione che la linea si stia "disegnando" in movimento dal capo
+    cued verso l'altro. Il ciclo cue+linea si ripete a un ritmo pilotato
+    dal beat, alternando l'estremita' del cue a ogni ciclo.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    cycle_len = max(10, int(40 / (0.5 + bass_val) * rotation_speed_factor))
+    cue_len = max(2, int(cycle_len * 0.12))
+    cycle_pos = frame % cycle_len
+    cycle_num = frame // cycle_len
+    cued_left = (cycle_num % 2 == 0)
+
+    n_lines = max(3, int(6 * num_elements_factor))
+    lane_h = height / n_lines
+    yv, xv = np.mgrid[0:height, 0:width]
+    img = np.zeros((height, width), dtype=float)
+    line_len_frac = 0.6 + mid_val * 0.2
+    thickness = max(2, int(4 * pixel_scale))
+    x0 = int(width * (1 - line_len_frac) / 2)
+    x1 = int(width * (1 + line_len_frac) / 2)
+
+    for i in range(n_lines):
+        y_c = int((i + 0.5) * lane_h)
+        lane_mask = np.abs(yv - y_c) < thickness
+        if cycle_pos < cue_len:
+            cue_x = x0 if cued_left else x1
+            cue_mask = lane_mask & (np.abs(xv - cue_x) < max(3, int(6 * pixel_scale)))
+            img = np.where(cue_mask, 1.0, img)
+        else:
+            full_line = lane_mask & (xv >= x0) & (xv <= x1)
+            img = np.where(full_line, 1.0, img)
+    return img
+
+def motion_induced_blindness_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    MOTION-INDUCED BLINDNESS (Bonneh, Cooperman & Sagi, 2001, Nature).
+    Bersagli statici salienti, circondati da un pattern globale in
+    movimento (una griglia rotante a crocette), scompaiono e ricompaiono
+    periodicamente dalla consapevolezza percettiva durante la fissazione
+    prolungata del centro. Qui si riproduce lo stimolo sperimentale
+    fedele: griglia rotante pilotata dal ritmo, tre bersagli statici fissi
+    e un marker di fissazione centrale -- la scomparsa percettiva accade
+    nell'osservatore, non nel rendering.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    yv, xv = np.mgrid[0:height, 0:width]
+    dx = xv - cx
+    dy = yv - cy
+    r = np.sqrt(dx * dx + dy * dy)
+    theta = np.arctan2(dy, dx)
+
+    n_cross = max(8, int(24 * num_elements_factor))
+    spin = frame * (0.03 + bass_val * 0.08) * rotation_speed_factor
+    seg_angle = 2 * np.pi / n_cross
+    local_theta = (theta - spin) % seg_angle
+    ring_mask = (r > min(width, height) * 0.12) & (r < min(width, height) * 0.46)
+    cross_mask = ((local_theta < seg_angle * 0.12) | (local_theta > seg_angle * 0.88)) & ring_mask
+
+    target_r = min(width, height) * 0.28 * element_size_factor
+    target_positions = [(-1.0, 0.0), (0.5, 0.87), (0.5, -0.87)]
+    dot_r = max(2, int(6 * pixel_scale))
+    target_mask = np.zeros((height, width), dtype=bool)
+    for ox, oy in target_positions:
+        px, py = cx + ox * target_r, cy + oy * target_r
+        target_mask |= ((xv - px) ** 2 + (yv - py) ** 2) <= dot_r ** 2
+
+    fix_r = max(1, int(3 * pixel_scale))
+    fix_mask = ((xv - cx) ** 2 + (yv - cy) ** 2) <= fix_r ** 2
+
+    img = np.where(cross_mask, 0.5, 0.02)
+    img = np.where(target_mask, 1.0, img)
+    img = np.where(fix_mask, 0.8, img)
+    return img
+
+def troxler_fading_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    TROXLER FADING (Troxler, 1804). Bersagli periferici statici su un
+    campo omogeneo scompaiono dalla consapevolezza durante la fissazione
+    prolungata del centro (adattamento neurale periferico). L'illusione
+    richiede un campo il piu' possibile stabile: qui il pattern resta
+    quasi statico, con solo una lentissima modulazione di luminosita'
+    pilotata dai bassi (variazioni troppo rapide o ampie impedirebbero
+    l'adattamento e quindi la sparizione percepita).
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    slow_phase = frame * 0.01 * (0.5 + bass_val * 0.3) * intensity
+    bg_val = 0.4 + 0.05 * np.sin(slow_phase)
+
+    n_targets = max(4, int(6 * num_elements_factor))
+    target_r = min(width, height) * 0.38 * element_size_factor
+    dot_r = max(3, int(9 * pixel_scale))
+    img = np.full((height, width), bg_val, dtype=float)
+    for i in range(n_targets):
+        ang = 2 * np.pi * i / n_targets
+        px, py = cx + target_r * np.cos(ang), cy + target_r * np.sin(ang)
+        rr, cc = disk((py, px), dot_r, shape=(height, width))
+        img[rr, cc] = 0.75
+
+    fix_r = max(1, int(3 * pixel_scale))
+    rr, cc = disk((cy, cx), fix_r, shape=(height, width))
+    img[rr, cc] = 0.95
+    return img
+
+def mccollough_effect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    McCOLLOUGH EFFECT (McCollough, 1965, Science). Un adattamento
+    prolungato a griglie bianco/nero colorate in modo diverso per
+    orientamento (arancio sulle orizzontali, ciano sulle verticali)
+    produce un dopoimmagine contingente all'orientamento. Qui si
+    riproduce lo stimolo sperimentale originale, che richiede colori
+    specifici per funzionare e quindi IGNORA la palette utente: fasi
+    alternate di griglia arancio-orizzontale e ciano-verticale, il cui
+    ritmo di alternanza e' pilotato dal beat. RITORNA DIRETTAMENTE
+    UN'IMMAGINE RGB (bypassa apply_colors).
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    period = max(20, int(70 / (0.4 + bass_val)))
+    phase_horizontal = (frame % (period * 2)) < period
+
+    base_stripe = max(4, int(18 * element_size_factor * pixel_scale))
+    yv, xv = np.mgrid[0:height, 0:width]
+
+    rgb = np.zeros((height, width, 3), dtype=float)
+    if phase_horizontal:
+        stripe = ((yv // base_stripe) % 2).astype(float)
+        rgb[:, :, 0] = stripe * 0.95
+        rgb[:, :, 1] = stripe * 0.55
+        rgb[:, :, 2] = stripe * 0.05
+    else:
+        stripe = ((xv // base_stripe) % 2).astype(float)
+        rgb[:, :, 0] = stripe * 0.0
+        rgb[:, :, 1] = stripe * 0.75
+        rgb[:, :, 2] = stripe * 0.95
+    return rgb
+
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     np.random.seed(seed + frame)
 
@@ -1306,6 +1585,22 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         img = poggendorff_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Rubber Pencil Illusion":
         img = rubber_pencil_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Wagon Wheel Illusion":
+        img = wagon_wheel_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Motion Aftereffect":
+        img = motion_aftereffect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Flash-Lag Effect":
+        img = flash_lag_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Line Motion Illusion":
+        img = line_motion_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Motion-Induced Blindness":
+        img = motion_induced_blindness_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Troxler Fading":
+        img = troxler_fading_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "McCollough Effect":
+        # Richiede colori specifici (arancio/ciano) per funzionare: ritorna
+        # gia' un'immagine RGB e bypassa la palette utente / apply_colors.
+        return mccollough_effect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     else:
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     return apply_colors(img, line_color, bg_color)
@@ -1365,6 +1660,9 @@ illusion_type = st.sidebar.selectbox(
         "Hermann Grid", "Scintillating Grid", "Kanizsa Triangle", "Adelson Checkershadow",
         "Motion Silencing", "Enigma Illusion", "Barberpole Illusion",
         "White's Illusion", "Poggendorff Illusion", "Rubber Pencil Illusion",
+        "Wagon Wheel Illusion", "Motion Aftereffect", "Flash-Lag Effect",
+        "Line Motion Illusion", "Motion-Induced Blindness", "Troxler Fading",
+        "McCollough Effect",
     ]
 )
 
@@ -1397,6 +1695,9 @@ with st.expander("🖼️ Anteprima di tutti gli effetti disponibili", expanded=
         "Hermann Grid", "Scintillating Grid", "Kanizsa Triangle", "Adelson Checkershadow",
         "Motion Silencing", "Enigma Illusion", "Barberpole Illusion",
         "White's Illusion", "Poggendorff Illusion", "Rubber Pencil Illusion",
+        "Wagon Wheel Illusion", "Motion Aftereffect", "Flash-Lag Effect",
+        "Line Motion Illusion", "Motion-Induced Blindness", "Troxler Fading",
+        "McCollough Effect",
     ]
     _thumb_cols = st.columns(4)
     for _i, _name in enumerate(_thumb_names):
