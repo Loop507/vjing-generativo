@@ -320,6 +320,21 @@ ILLUSION_SCIENCE = {
         "en": "McCollough (1965, Science) :: Adaptation to orientation-contingent colored gratings; subsequent achromatic gratings appear tinted with the color associated with that orientation.",
         "tags": ["mccollougheffect", "colorcontingent"],
     },
+    "Phi/Beta Movement": {
+        "it": "Wertheimer (1912) :: Due stimoli vicini mostrati in alternanza generano una sensazione di moto la cui natura dipende dall'intervallo interstimolo (ISI): a ISI brevi si vede un oggetto spostarsi (beta movement, base percettiva del cinema); a ISI cortissimi tende al 'puro phi' (senso di moto senza oggetto). L'ISI qui e' pilotato direttamente dal BPM.",
+        "en": "Wertheimer (1912) :: Two nearby stimuli shown in alternation generate a sensation of motion whose nature depends on the interstimulus interval (ISI): short ISIs yield a perceived moving object (beta movement, the perceptual basis of cinema); very short ISIs tend toward 'pure phi' (a sense of movement without an object). ISI here is driven directly by the track's BPM.",
+        "tags": ["phiphenomenon", "betamovement", "wertheimer"],
+    },
+    "Ternus Illusion": {
+        "it": "Ternus (1926); Pantle & Picciano (1976) :: Tre elementi mostrati in due fotogrammi separati da un breve ISI generano una percezione di moto ambigua: ISI corti (<~30-50ms) danno 'element motion' (un elemento salta all'altro capo), ISI piu' lunghi danno 'group motion' (tutti scorrono insieme). L'ISI qui e' derivato dal BPM, permettendo di attraversare dal vivo la soglia percettiva.",
+        "en": "Ternus (1926); Pantle & Picciano (1976) :: Three elements shown in two frames separated by a brief ISI produce an ambiguous motion percept: short ISIs (<~30-50ms) give 'element motion' (one element jumps to the other end), longer ISIs give 'group motion' (all elements shift together). ISI here is derived from the BPM, letting the threshold be crossed live.",
+        "tags": ["ternus", "elementmotion", "groupmotion"],
+    },
+    "Brucke-Bartley Effect": {
+        "it": "Brucke (1864); Bartley (1938) :: Una luce che lampeggia tra 1 e 17 Hz, con picco a 8-10 Hz (banda alfa), viene percepita piu' luminosa di una luce continua di identica luminanza media. La frequenza di flicker qui e' derivata direttamente dal BPM.",
+        "en": "Brucke (1864); Bartley (1938) :: Light flickering between 1 and 17 Hz, peaking around 8-10 Hz (alpha band), is perceived as brighter than steady light of identical mean luminance. Flicker frequency here is derived directly from the BPM.",
+        "tags": ["bruckebartley", "brightnessenhancement"],
+    },
 }
 
 def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
@@ -1530,6 +1545,114 @@ def mccollough_effect_illusion(width, height, frame, audio_features, intensity, 
         rgb[:, :, 2] = stripe * 0.95
     return rgb
 
+def phi_beta_movement_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    PHI PHENOMENON / BETA MOVEMENT (Wertheimer, 1912). Due stimoli vicini,
+    mostrati in alternanza, generano una sensazione di moto la cui natura
+    dipende criticamente dall'intervallo interstimolo (ISI): a ISI brevi
+    si percepisce un oggetto che si sposta (beta movement, la base
+    percettiva del cinema), a ISI cortissimi la sensazione tende al
+    "puro phi" (senso di movimento senza un oggetto definito). Qui l'ISI
+    e' derivato direttamente dal BPM del brano (una frazione del battito),
+    pilotando l'alternanza di una griglia di coppie di dischi.
+    NOTA: la conversione BPM->frame assume un frame rate di output
+    tipico (~24-30 fps); non e' uno strumento psicofisico di laboratorio.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    tempo = audio_features.get("tempo", 120.0)
+
+    beats_per_frame_unit = max(1, int((60.0 / max(1.0, tempo)) * 6.0 / max(0.1, rotation_speed_factor) / max(0.1, intensity)))
+    flip = (frame // beats_per_frame_unit) % 2 == 0
+
+    n_pairs_x = max(2, int(4 * num_elements_factor))
+    n_pairs_y = max(1, int(2 * num_elements_factor))
+    cell_w = width / n_pairs_x
+    cell_h = height / n_pairs_y
+    dot_r = max(3, int(cell_w * 0.12 * element_size_factor * pixel_scale))
+    offset = cell_w * 0.22 * (0.6 + bass_val * 0.6)
+
+    img = np.zeros((height, width), dtype=float)
+    for iy in range(n_pairs_y):
+        for ix in range(n_pairs_x):
+            cx = (ix + 0.5) * cell_w
+            cy = (iy + 0.5) * cell_h
+            px = cx - offset if flip else cx + offset
+            rr, cc = disk((cy, px), dot_r, shape=(height, width))
+            img[rr, cc] = 1.0
+    return img
+
+def ternus_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    TERNUS ILLUSION (Ternus, 1926; Pantle & Picciano, 1976). Tre elementi
+    identici, mostrati in due fotogrammi separati da un breve intervallo
+    vuoto (ISI), generano una percezione di moto ambigua: a ISI corti
+    (<~30-50ms) si vede solo l'elemento estremo "saltare" all'altro capo
+    (element motion), a ISI piu' lunghi tutti gli elementi sembrano
+    scorrere insieme (group motion). Qui la durata dell'ISI (in numero di
+    fotogrammi) e' derivata dal BPM e dai bassi, permettendo di
+    attraversare dal vivo la soglia percettiva element/group.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    isi_frames = max(1, int(2 + bass_val * 10 * rotation_speed_factor * intensity))
+    frame_a_len = max(3, int(10 / max(0.1, rotation_speed_factor)))
+    total_cycle = frame_a_len * 2 + isi_frames
+    pos = frame % total_cycle
+
+    n_slots = max(4, int(5 * num_elements_factor))
+    slot_w = width / (n_slots + 1)
+    dot_r = max(4, int(slot_w * 0.28 * element_size_factor * pixel_scale))
+    cy = height / 2.0
+
+    if pos < frame_a_len:
+        active_slots = [1, 2, 3]
+    elif pos < frame_a_len + isi_frames:
+        active_slots = []
+    else:
+        active_slots = [2, 3, 4]
+
+    img = np.zeros((height, width), dtype=float)
+    for s in active_slots:
+        px = s * slot_w
+        rr, cc = disk((cy, px), dot_r, shape=(height, width))
+        img[rr, cc] = 1.0
+    return img
+
+def brucke_bartley_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    BRUCKE-BARTLEY EFFECT (Brucke, 1864; Bartley, 1938). Una luce che
+    lampeggia a frequenze comprese tra 1 e 17 Hz, con un picco intorno
+    agli 8-10 Hz (banda alfa), viene percepita PIU' LUMINOSA di una luce
+    continua di identica luminanza media -- un potenziamento paradossale
+    della luminosita' percepita legato alle oscillazioni corticali alfa.
+    La frequenza di flicker qui e' derivata direttamente dal BPM (una
+    frazione del battito) e dai bassi: variando la velocita' l'utente
+    attraversa dal vivo la banda 8-10 Hz dove l'effetto e' massimo. Un
+    anello di riferimento a luminanza costante circonda il disco
+    lampeggiante per il confronto diretto.
+    NOTA: la conversione Hz->fase assume un frame rate di output tipico
+    (~30 fps); non e' uno strumento psicofisico di laboratorio.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    tempo = audio_features.get("tempo", 120.0)
+
+    flicker_hz = (tempo / 60.0) * (0.5 + bass_val * 1.5) * rotation_speed_factor * intensity
+    flicker_hz = max(0.5, min(20.0, flicker_hz))
+    phase_per_frame = 2 * np.pi * flicker_hz / 30.0
+    flicker_val = 0.5 + 0.5 * np.sin(frame * phase_per_frame)
+
+    cx, cy = width / 2.0, height / 2.0
+    yv, xv = np.mgrid[0:height, 0:width]
+    r = np.sqrt((xv - cx) ** 2 + (yv - cy) ** 2)
+    inner_r = min(width, height) * 0.32 * element_size_factor
+    outer_r = min(width, height) * 0.46 * element_size_factor
+
+    inner_disc = r < inner_r
+    ref_ring = (r >= inner_r) & (r < outer_r)
+
+    img = np.where(inner_disc, flicker_val, np.where(ref_ring, 0.5, 0.02))
+    return img
+
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     np.random.seed(seed + frame)
 
@@ -1601,6 +1724,12 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         # Richiede colori specifici (arancio/ciano) per funzionare: ritorna
         # gia' un'immagine RGB e bypassa la palette utente / apply_colors.
         return mccollough_effect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Phi/Beta Movement":
+        img = phi_beta_movement_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Ternus Illusion":
+        img = ternus_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Brucke-Bartley Effect":
+        img = brucke_bartley_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     else:
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     return apply_colors(img, line_color, bg_color)
@@ -1663,6 +1792,7 @@ illusion_type = st.sidebar.selectbox(
         "Wagon Wheel Illusion", "Motion Aftereffect", "Flash-Lag Effect",
         "Line Motion Illusion", "Motion-Induced Blindness", "Troxler Fading",
         "McCollough Effect",
+        "Phi/Beta Movement", "Ternus Illusion", "Brucke-Bartley Effect",
     ]
 )
 
@@ -1698,6 +1828,7 @@ with st.expander("🖼️ Anteprima di tutti gli effetti disponibili", expanded=
         "Wagon Wheel Illusion", "Motion Aftereffect", "Flash-Lag Effect",
         "Line Motion Illusion", "Motion-Induced Blindness", "Troxler Fading",
         "McCollough Effect",
+        "Phi/Beta Movement", "Ternus Illusion", "Brucke-Bartley Effect",
     ]
     _thumb_cols = st.columns(4)
     for _i, _name in enumerate(_thumb_names):
