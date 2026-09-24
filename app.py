@@ -1376,7 +1376,9 @@ if uploaded_file and st.button("🚀 Genera Video Illusorio Scientifico", type="
 
 if "loop507_video_bytes" in st.session_state:
     st.success("✨ Video generato con successo! Implementazioni neuropsicologiche accurate.")
-    st.video(st.session_state["loop507_preview_video_bytes"])
+    _preview_col, _ = st.columns([1, 1])
+    with _preview_col:
+        st.video(st.session_state["loop507_preview_video_bytes"])
     st.caption("Anteprima a 380p — il download qui sotto e' alla risoluzione piena scelta in fase di generazione.")
     st.download_button(
         "📥 Scarica Video Illusorio Scientifico",
