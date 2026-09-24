@@ -255,6 +255,36 @@ ILLUSION_SCIENCE = {
         "en": "Adelson (1995) :: Lightness constancy. A sweeping shadow alters the perceived brightness of identically-valued squares.",
         "tags": ["checkershadow", "adelson"],
     },
+    "Motion Silencing": {
+        "it": "Suchow & Alvarez (2011, Current Biology) :: Motion Silencing. Un anello di elementi che oscillano in luminanza smette di apparire mutevole quando ruota velocemente ('silencing of awareness to visual change').",
+        "en": "Suchow & Alvarez (2011, Current Biology) :: Motion Silencing. A ring of luminance-oscillating elements stops appearing to change once it rotates fast enough ('silencing of awareness to visual change').",
+        "tags": ["motionsilencing", "suchowalvarez"],
+    },
+    "Enigma Illusion": {
+        "it": "Leviant (1996) :: Enigma. Anelli concentrici con texture radiale a denti di sega; il moto serpeggiante illusorio e' legato ai micro-movimenti oculari fissazionali (microsaccadi), qui simulati come jitter angolare.",
+        "en": "Leviant (1996) :: Enigma. Concentric rings with a sawtooth radial texture; the illusory serpentine motion is tied to fixational eye movements (microsaccades), here simulated as angular jitter.",
+        "tags": ["enigma", "leviant", "microsaccades"],
+    },
+    "Barberpole Illusion": {
+        "it": "Wallach (1935); Wuerger, Shapley & Rubin (1996) :: Barberpole / aperture problem. Strisce diagonali viste attraverso un'apertura allungata sembrano scorrere lungo l'asse lungo dell'apertura, non nella direzione fisica reale.",
+        "en": "Wallach (1935); Wuerger, Shapley & Rubin (1996) :: Barberpole / aperture problem. Diagonal stripes seen through an elongated aperture appear to travel along the aperture's long axis rather than their true physical direction.",
+        "tags": ["barberpole", "apertureproblem"],
+    },
+    "White's Illusion": {
+        "it": "White (1979) :: Lightness illusion. Toppe grigie identiche su una griglia a bande bianche/nere appaiono di luminosita' diversa, in direzione opposta a quella predetta dal semplice contrasto simultaneo.",
+        "en": "White (1979) :: Lightness illusion. Identical gray patches on a black/white striped grating appear to differ in brightness, in the opposite direction predicted by simple simultaneous contrast.",
+        "tags": ["whitesillusion", "lightness"],
+    },
+    "Poggendorff Illusion": {
+        "it": "Poggendorff (1860) :: Due segmenti diagonali collineari, interrotti da due bande verticali occludenti, appaiono disallineati pur essendo perfettamente collineari.",
+        "en": "Poggendorff (1860) :: Two collinear diagonal segments, interrupted by two occluding vertical bands, appear misaligned despite being perfectly collinear.",
+        "tags": ["poggendorff", "geometricillusion"],
+    },
+    "Rubber Pencil Illusion": {
+        "it": "Pomerantz (1983); Macknik & Martinez-Conde (2008, Nat. Rev. Neurosci.) :: Un'asta rigida oscillata rapidamente appare flettersi come gomma, per la risposta differenziale dei neuroni end-stopped (V1/MT) tra estremita' e centro dello stimolo in moto.",
+        "en": "Pomerantz (1983); Macknik & Martinez-Conde (2008, Nat. Rev. Neurosci.) :: A rigid bar oscillated rapidly appears to flex like rubber, due to the differential response of end-stopped neurons (V1/MT) between the stimulus' endpoints and its center during motion.",
+        "tags": ["rubberpencil", "endstoppedneurons"],
+    },
 }
 
 def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
@@ -999,6 +1029,228 @@ def adelson_checkershadow_illusion(width, height, frame, audio_features, intensi
     img = base_val * shadow_factor
     return img
 
+def motion_silencing_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    MOTION SILENCING ILLUSION (Suchow & Alvarez, 2011, Current Biology).
+    Anello di elementi che oscillano in luminanza secondo una sinusoide con
+    fase diversa per ciascun elemento. Facendo ruotare l'anello, il
+    cervello smette di percepire il flicker luminoso pur essendo ancora
+    presente nei dati ('silencing of awareness to visual change'):
+    l'effetto dipende dalla velocita' di rotazione, qui pilotata dai bassi,
+    e la frequenza del flicker e' pilotata dagli alti. Un piccolo marker
+    di fissazione centrale aiuta l'occhio a restare fermo, come nel
+    paradigma sperimentale originale.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    base_radius = min(width, height) * 0.32
+    ring_radius = base_radius * element_size_factor
+    n_dots = max(8, int(28 * num_elements_factor))
+    base_dot_r = max(2, int(9 * pixel_scale))
+    dot_radius = max(2, int((base_dot_r + bass_val * 4 * intensity) * pixel_scale))
+
+    spin = frame * (0.03 + bass_val * 0.12) * rotation_speed_factor
+    flicker_speed = 0.35 + high_val * 0.9
+
+    img = np.zeros((height, width), dtype=float)
+    for i in range(n_dots):
+        angle = spin + i * (2 * np.pi / n_dots)
+        dx_c = cx + ring_radius * np.cos(angle)
+        dy_c = cy + ring_radius * np.sin(angle)
+        phase = i * (2 * np.pi / n_dots) * 3.0  # un terzo dei dot in controfase
+        val = np.clip(0.15 + 0.75 * (0.5 + 0.5 * np.sin(frame * flicker_speed + phase)) * intensity, 0.0, 1.0)
+        rr, cc = disk((dy_c, dx_c), dot_radius, shape=(height, width))
+        img[rr, cc] = val
+    fix_r = max(1, int(3 * pixel_scale))
+    rr, cc = disk((cy, cx), fix_r, shape=(height, width))
+    img[rr, cc] = 0.9
+    return img
+
+def enigma_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    ENIGMA ILLUSION (Leviant, 1996). Anelli concentrici attraversati da una
+    fine texture radiale a denti di sega; nel fenomeno reale il moto
+    "serpeggiante" illusorio lungo gli anelli e' legato ai micro-movimenti
+    oculari involontari (microsaccadi) durante la fissazione centrale. Qui
+    le microsaccadi sono simulate con un piccolo jitter angolare oscillante
+    nel tempo, la cui ampiezza e' pilotata dagli alti. Completamente
+    vettorizzato in coordinate polari.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    yv, xv = np.mgrid[0:height, 0:width]
+    dx = xv - cx
+    dy = yv - cy
+    r = np.sqrt(dx * dx + dy * dy)
+    theta = np.arctan2(dy, dx)
+
+    base_ring_width = 40.0
+    ring_width = max(max(3, int(6 * pixel_scale)), int((base_ring_width * element_size_factor + bass_val * 12 * intensity) * pixel_scale))
+    ring_idx = (r // ring_width).astype(int)
+    direction = np.where(ring_idx % 2 == 0, 1.0, -1.0)
+
+    microsaccade = 0.06 * (0.3 + high_val) * rotation_speed_factor * np.sin(frame * 2.7)
+
+    n_teeth = max(6, int(40 * num_elements_factor))
+    tooth_angle = 2 * np.pi / n_teeth
+    local_theta = (theta * direction + microsaccade * direction + ring_idx * 0.35) % tooth_angle
+    frac = local_theta / tooth_angle
+
+    img = np.where(frac < 0.5, frac * 2, (1 - frac) * 1.2 + 0.15)
+    return img
+
+def barberpole_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    BARBERPOLE ILLUSION / APERTURE PROBLEM (Wallach, 1935; Wuerger, Shapley
+    & Rubin, 1996). Strisce diagonali che scorrono sempre nella stessa
+    direzione fisica (ortogonale al proprio orientamento), visibili solo
+    attraverso un'apertura rettangolare allungata: il sistema visivo
+    risolve l'ambiguita' del moto locale (aperture problem) percependo lo
+    scorrimento lungo l'asse lungo dell'apertura invece che nella direzione
+    fisica reale delle strisce. L'apertura ruota lentamente nel tempo
+    (pilotata dai medi) per mostrare come la direzione percepita "segua"
+    sempre l'orientamento dell'apertura.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    yv, xv = np.mgrid[0:height, 0:width]
+    dx = xv - cx
+    dy = yv - cy
+
+    aperture_angle = np.radians(30 + mid_val * 40 + frame * 0.15 * rotation_speed_factor)
+    rot_x = dx * np.cos(-aperture_angle) - dy * np.sin(-aperture_angle)
+    rot_y = dx * np.sin(-aperture_angle) + dy * np.cos(-aperture_angle)
+    aperture_half_w = min(width, height) * 0.14 * element_size_factor
+    aperture_half_h = min(width, height) * 0.34 * element_size_factor
+    inside_aperture = (np.abs(rot_x) <= aperture_half_w) & (np.abs(rot_y) <= aperture_half_h)
+
+    stripe_angle = np.radians(60)
+    period = max(8, int((26 / num_elements_factor) * pixel_scale))
+    shift = frame * (2 + bass_val * 6 * intensity) * pixel_scale
+    proj = dx * np.cos(stripe_angle) + dy * np.sin(stripe_angle)
+    stripe_val = (((proj + shift) // period) % 2).astype(float)
+
+    bg_val = 0.12
+    img = np.where(inside_aperture, stripe_val, bg_val)
+    return img
+
+def whites_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    WHITE'S ILLUSION (White, 1979). Griglia a bande verticali bianche/nere;
+    toppe grigie identiche vengono posizionate su una riga sopra le bande
+    bianche e su un'altra riga sopra le bande nere. Fisicamente sono lo
+    stesso grigio, ma appaiono di luminosita' diversa -- in direzione
+    OPPOSTA a quella prevista dal semplice contrasto simultaneo (le toppe
+    sulle bande nere non sembrano piu' chiare come da contrasto, ma quasi
+    assimilate). La griglia scorre pilotata dai bassi, le toppe pulsano
+    con i medi. Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    yv, xv = np.mgrid[0:height, 0:width]
+
+    base_stripe_w = 34.0
+    stripe_w = max(max(3, int(6 * pixel_scale)), int((base_stripe_w / num_elements_factor * element_size_factor) * pixel_scale))
+    shift = frame * (1.2 + bass_val * 3.0) * pixel_scale
+    col_idx = ((xv + shift) // stripe_w).astype(int)
+    grating = col_idx % 2  # 0 = banda scura, 1 = banda chiara
+    base = np.where(grating == 1, 0.85, 0.15)
+
+    patch_h = height * (0.14 + mid_val * 0.05)
+    upper_band = (yv >= height * 0.28) & (yv <= height * 0.28 + patch_h)
+    lower_band = (yv >= height * 0.62) & (yv <= height * 0.62 + patch_h)
+
+    patch_on_light = upper_band & (grating == 1) & (col_idx % 4 == 1)
+    patch_on_dark = lower_band & (grating == 0) & (col_idx % 4 == 2)
+
+    patch_gray = 0.5 * intensity + 0.25 * (1 - intensity)
+    img = np.where(patch_on_light | patch_on_dark, patch_gray, base)
+    return img
+
+def poggendorff_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    POGGENDORFF ILLUSION (Poggendorff, 1860). Piu' segmenti diagonali,
+    ognuno perfettamente collineare, vengono interrotti da due bande
+    verticali occludenti: pur essendo geometricamente allineati, i tratti
+    visibili ai lati delle bande appaiono disallineati. Le linee sono
+    disposte a piu' corsie orizzontali (per una texture generativa piena
+    di schermo), l'angolo e la posizione delle bande sono pilotati
+    dall'audio. Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    cx = width / 2.0
+    yv, xv = np.mgrid[0:height, 0:width]
+
+    base_lane_h = 46.0
+    lane_h = max(max(6, int(10 * pixel_scale)), int((base_lane_h / num_elements_factor * element_size_factor) * pixel_scale))
+    lane_idx = (yv // lane_h).astype(int)
+    lane_center = (lane_idx + 0.5) * lane_h
+
+    angle = np.radians(35 + mid_val * 20)
+    slope = np.tan(angle) * (0.5 + high_val * 0.5)
+    line_y = lane_center + slope * (xv - cx)
+
+    thickness = max(1, int((2 + bass_val * 2 * intensity) * pixel_scale))
+    diag_line = np.abs(yv - line_y) < thickness
+
+    band_w = max(4, int((width * (0.05 + bass_val * 0.03))))
+    band_center_1 = width * (0.32 + 0.03 * np.sin(frame * 0.05 * rotation_speed_factor))
+    band_center_2 = width * (0.68 + 0.03 * np.sin(frame * 0.05 * rotation_speed_factor + np.pi))
+    in_band = (np.abs(xv - band_center_1) < band_w / 2) | (np.abs(xv - band_center_2) < band_w / 2)
+
+    img = np.where(in_band, 0.55, np.where(diag_line, 1.0, 0.05))
+    return img
+
+def rubber_pencil_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    RUBBER PENCIL ILLUSION (Pomerantz, 1983; recensione neurale in Macknik &
+    Martinez-Conde, 2008, Nature Reviews Neuroscience). Un'asta rigida
+    oscillata rapidamente da un'estremita' appare flettersi come gomma: i
+    neuroni end-stopped di V1/MT rispondono diversamente tra le estremita'
+    e il centro dello stimolo in moto, causando una dislocazione spaziale
+    apparente. Qui il fenomeno e' rappresentato direttamente come un'onda
+    la cui ampiezza e fase crescono dall'estremita' "tenuta" (ferma) verso
+    quella "libera" (che sferza), pilotata dal ritmo audio. Piu' corsie
+    alternano il lato di presa per una texture generativa a schermo
+    intero. Completamente vettorizzato.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    high_val = audio_features["high"][frame % len(audio_features["high"])]
+
+    yv, xv = np.mgrid[0:height, 0:width]
+
+    base_lane_h = 60.0
+    lane_h = max(max(8, int(14 * pixel_scale)), int((base_lane_h / num_elements_factor * element_size_factor) * pixel_scale))
+    lane_idx = (yv // lane_h).astype(int)
+    lane_center = (lane_idx + 0.5) * lane_h
+    held_left = (lane_idx % 2 == 0)
+
+    xn = np.where(held_left, xv / float(width), 1.0 - xv / float(width))
+
+    amplitude = lane_h * 0.32 * element_size_factor * intensity
+    phase_lag = 5.0 + high_val * 7.0
+    omega = (0.9 + bass_val * 2.2) * rotation_speed_factor
+
+    offset = amplitude * xn * np.sin(omega * frame * 0.15 - phase_lag * xn)
+    target_y = lane_center + offset
+
+    thickness = max(2, int((5 + bass_val * 3) * pixel_scale))
+    bar_mask = np.abs(yv - target_y) < thickness
+
+    img = np.where(bar_mask, 1.0, 0.06)
+    return img
+
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     np.random.seed(seed + frame)
 
@@ -1042,6 +1294,18 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         img = kanizsa_triangle_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Adelson Checkershadow":
         img = adelson_checkershadow_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Motion Silencing":
+        img = motion_silencing_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Enigma Illusion":
+        img = enigma_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Barberpole Illusion":
+        img = barberpole_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "White's Illusion":
+        img = whites_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Poggendorff Illusion":
+        img = poggendorff_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Rubber Pencil Illusion":
+        img = rubber_pencil_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     else:
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     return apply_colors(img, line_color, bg_color)
@@ -1099,6 +1363,8 @@ illusion_type = st.sidebar.selectbox(
         "Cafe Wall", "Checkered", "Shifted Edges", "Fraser Twisted Cords",
         "Rotating Snakes", "Ouchi-Spillmann", "Pinna-Brelstaff",
         "Hermann Grid", "Scintillating Grid", "Kanizsa Triangle", "Adelson Checkershadow",
+        "Motion Silencing", "Enigma Illusion", "Barberpole Illusion",
+        "White's Illusion", "Poggendorff Illusion", "Rubber Pencil Illusion",
     ]
 )
 
@@ -1129,6 +1395,8 @@ with st.expander("🖼️ Anteprima di tutti gli effetti disponibili", expanded=
         "Cafe Wall", "Checkered", "Shifted Edges", "Fraser Twisted Cords",
         "Rotating Snakes", "Ouchi-Spillmann", "Pinna-Brelstaff",
         "Hermann Grid", "Scintillating Grid", "Kanizsa Triangle", "Adelson Checkershadow",
+        "Motion Silencing", "Enigma Illusion", "Barberpole Illusion",
+        "White's Illusion", "Poggendorff Illusion", "Rubber Pencil Illusion",
     ]
     _thumb_cols = st.columns(4)
     for _i, _name in enumerate(_thumb_names):
