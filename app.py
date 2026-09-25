@@ -335,6 +335,26 @@ ILLUSION_SCIENCE = {
         "en": "Brucke (1864); Bartley (1938) :: Light flickering between 1 and 17 Hz, peaking around 8-10 Hz (alpha band), is perceived as brighter than steady light of identical mean luminance. Flicker frequency here is derived directly from the BPM.",
         "tags": ["bruckebartley", "brightnessenhancement"],
     },
+    "Kinetic Depth Effect": {
+        "it": "Wallach & O'Connell (1953, J. Exp. Psychol.) :: La proiezione ortografica 2D di un oggetto 3D a fil di ferro, se ruotata, viene percepita come un solido tridimensionale reale: la profondita' emerge PURAMENTE dal moto, anche se ogni fotogramma singolo e' piatto e ambiguo. Velocita' di rotazione pilotata dal BPM.",
+        "en": "Wallach & O'Connell (1953, J. Exp. Psychol.) :: The 2D orthographic projection of a 3D wireframe object, when rotated, is perceived as a genuine 3D solid: depth emerges PURELY from motion, even though each single frame is flat and ambiguous. Rotation speed driven by BPM.",
+        "tags": ["kineticdeptheffect", "wallach"],
+    },
+    "Ames Window Illusion": {
+        "it": "Ames (1947) :: Una finestra trapezoidale (che mima una prospettiva forzata), ruotata attorno a un asse verticale, non viene percepita ruotare a 360 gradi ma oscillare avanti e indietro, perche' il cervello interpreta erroneamente il trapezio come un rettangolo visto di scorcio. Velocita' pilotata dal BPM.",
+        "en": "Ames (1947) :: A trapezoidal window (mimicking forced perspective), rotated around a vertical axis, is not perceived rotating through 360 degrees but oscillating back and forth, because the brain misinterprets the trapezoid as a rectangle seen at an angle. Speed driven by BPM.",
+        "tags": ["ameswindow", "trapezoidalillusion"],
+    },
+    "Necker Cube": {
+        "it": "Necker (1832); sui meccanismi di inversione si veda Kornmeier & Bach (2004) :: Un cubo a fil di ferro privo di indizi di profondita' e' intrinsecamente ambiguo: quale faccia sia 'davanti' si inverte spontaneamente nella percezione. Un flash sincronizzato al beat riprende la tecnica sperimentale per indurre le inversioni percettive.",
+        "en": "Necker (1832); on reversal mechanisms see Kornmeier & Bach (2004) :: A wireframe cube lacking depth cues is intrinsically ambiguous: which face is 'front' spontaneously flips in perception. A beat-synced flash echoes the experimental technique used to induce perceptual reversals.",
+        "tags": ["neckercube", "bistableperception"],
+    },
+    "Von Bezold Spreading": {
+        "it": "von Bezold (1874) :: Un colore intrecciato con una rete di linee nere o bianche viene percepito assimilarsi verso il colore delle linee circostanti (assimilazione, non contrasto). Stessa toppa di colore mostrata con griglia nera a sinistra e griglia bianca a destra.",
+        "en": "von Bezold (1874) :: A color interwoven with a network of black or white lines is perceived to assimilate toward the color of the surrounding lines (assimilation, not contrast). The same color patch shown with a black grid on the left and a white grid on the right.",
+        "tags": ["vonbezold", "colorassimilation"],
+    },
 }
 
 def build_loop507_report(illusion_type, duration, fps, n_frames, size, bpm,
@@ -1653,6 +1673,168 @@ def brucke_bartley_illusion(width, height, frame, audio_features, intensity, ele
     img = np.where(inner_disc, flicker_val, np.where(ref_ring, 0.5, 0.02))
     return img
 
+def kinetic_depth_effect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    KINETIC DEPTH EFFECT (Wallach & O'Connell, 1953, Journal of
+    Experimental Psychology). La proiezione ortografica 2D di un oggetto
+    3D a fil di ferro, se ruotata, viene percepita come un solido
+    tridimensionale reale -- la profondita' emerge PURAMENTE dal moto
+    (motion parallax), anche se ogni fotogramma singolo e' una proiezione
+    piatta e geometricamente ambigua. Vertici di un cubo, proiezione
+    ortografica su due assi. Velocita' di rotazione pilotata dal BPM/bassi.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    mid_val = audio_features["mid"][frame % len(audio_features["mid"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    scale = min(width, height) * 0.28 * element_size_factor
+
+    verts = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=float)
+    edges = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3), (2, 6), (3, 7), (4, 5), (4, 6), (5, 7), (6, 7)]
+
+    ang_y = frame * (0.02 + bass_val * 0.08) * rotation_speed_factor * intensity
+    ang_x = frame * (0.01 + mid_val * 0.03) * rotation_speed_factor * 0.6
+
+    cy_, sy_ = np.cos(ang_y), np.sin(ang_y)
+    cx_, sx_ = np.cos(ang_x), np.sin(ang_x)
+
+    rot = verts.copy()
+    x1 = rot[:, 0] * cy_ + rot[:, 2] * sy_
+    z1 = -rot[:, 0] * sy_ + rot[:, 2] * cy_
+    rot[:, 0] = x1
+    rot[:, 2] = z1
+    y1 = rot[:, 1] * cx_ - rot[:, 2] * sx_
+    z2 = rot[:, 1] * sx_ + rot[:, 2] * cx_
+    rot[:, 1] = y1
+    rot[:, 2] = z2
+
+    proj_x = cx + rot[:, 0] * scale
+    proj_y = cy + rot[:, 1] * scale
+
+    img = np.zeros((height, width), dtype=float)
+    for a, b in edges:
+        r0, c0 = int(np.clip(proj_y[a], 0, height - 1)), int(np.clip(proj_x[a], 0, width - 1))
+        r1, c1 = int(np.clip(proj_y[b], 0, height - 1)), int(np.clip(proj_x[b], 0, width - 1))
+        rr, cc = line(r0, c0, r1, c1)
+        valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+        img[rr[valid], cc[valid]] = 1.0
+    return img
+
+def ames_window_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    AMES TRAPEZOIDAL WINDOW ILLUSION (Ames, 1947). Una finestra a forma
+    di trapezio (piu' larga da un lato, per mimare la prospettiva forzata
+    di una finestra rettangolare vista di scorcio) viene fatta ruotare
+    attorno a un asse verticale con una proiezione prospettica reale: il
+    cervello, interpretando erroneamente il trapezio come un rettangolo
+    visto in prospettiva, percepisce un'oscillazione avanti e indietro
+    invece di una rotazione completa a 360 gradi. Velocita' di rotazione
+    pilotata dal BPM/bassi.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    scale = min(width, height) * 0.3 * element_size_factor
+    focal = 3.0
+
+    verts3d = np.array([
+        [-0.5, 0.7, 0.0],
+        [0.9, 0.9, 0.0],
+        [0.9, -0.9, 0.0],
+        [-0.5, -0.7, 0.0],
+    ])
+    ang = frame * (0.02 + bass_val * 0.1) * rotation_speed_factor * intensity
+
+    c_, s_ = np.cos(ang), np.sin(ang)
+    x1 = verts3d[:, 0] * c_ + verts3d[:, 2] * s_
+    z1 = -verts3d[:, 0] * s_ + verts3d[:, 2] * c_
+
+    persp = focal / (focal + z1)
+    proj_x = cx + x1 * scale * persp
+    proj_y = cy + verts3d[:, 1] * scale * persp
+
+    img = np.zeros((height, width), dtype=float)
+    n = len(proj_x)
+    for i in range(n):
+        j = (i + 1) % n
+        r0, c0 = int(np.clip(proj_y[i], 0, height - 1)), int(np.clip(proj_x[i], 0, width - 1))
+        r1, c1 = int(np.clip(proj_y[j], 0, height - 1)), int(np.clip(proj_x[j], 0, width - 1))
+        rr, cc = line(r0, c0, r1, c1)
+        valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+        img[rr[valid], cc[valid]] = 1.0
+    return img
+
+def necker_cube_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    NECKER CUBE (Necker, 1832; sui meccanismi di inversione percettiva si
+    veda Kornmeier & Bach, 2004). Un cubo a fil di ferro privo di indizi
+    di profondita' (nessuna occlusione, nessuna ombreggiatura) e'
+    intrinsecamente ambiguo: quale faccia sia "davanti" si inverte
+    spontaneamente nella percezione. Un breve flash a schermo intero,
+    sincronizzato al beat, riprende la tecnica sperimentale usata per
+    indurre le inversioni percettive (blink-triggered reversal). Il cubo
+    ruota molto lentamente per non introdurre indizi di moto che
+    disambiguerebbero la figura.
+    """
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+
+    cx, cy = width / 2.0, height / 2.0
+    scale = min(width, height) * 0.26 * element_size_factor
+
+    verts = np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=float)
+    edges = [(0, 1), (0, 2), (0, 4), (1, 3), (1, 5), (2, 3), (2, 6), (3, 7), (4, 5), (4, 6), (5, 7), (6, 7)]
+
+    slow_ang = frame * 0.003 * rotation_speed_factor
+    c_, s_ = np.cos(slow_ang), np.sin(slow_ang)
+    x1 = verts[:, 0] * c_ + verts[:, 2] * s_
+    z1 = -verts[:, 0] * s_ + verts[:, 2] * c_
+    proj_x = cx + x1 * scale
+    proj_y = cy + verts[:, 1] * scale
+
+    img = np.zeros((height, width), dtype=float)
+    for a, b in edges:
+        r0, c0 = int(np.clip(proj_y[a], 0, height - 1)), int(np.clip(proj_x[a], 0, width - 1))
+        r1, c1 = int(np.clip(proj_y[b], 0, height - 1)), int(np.clip(proj_x[b], 0, width - 1))
+        rr, cc = line(r0, c0, r1, c1)
+        valid = (rr >= 0) & (rr < height) & (cc >= 0) & (cc < width)
+        img[rr[valid], cc[valid]] = 1.0
+
+    flash_period = max(6, int(30 / (0.3 + bass_val) / max(0.1, rotation_speed_factor)))
+    is_flash = (frame % flash_period) < 2
+    if is_flash:
+        img = np.maximum(img, 0.9)
+    return img
+
+def von_bezold_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0):
+    """
+    VON BEZOLD SPREADING EFFECT (von Bezold, 1874). Un colore intrecciato
+    con una rete di linee nere o bianche viene percepito assimilarsi
+    verso il colore delle linee circostanti piuttosto che contrastare con
+    esso (assimilazione, non il classico contrasto simultaneo). Qui la
+    stessa toppa di colore (presa dalla palette dell'utente, line_color)
+    e' mostrata a sinistra con una griglia di linee nere sovrapposta e a
+    destra con una griglia di linee bianche: il colore di base e'
+    identico, ma le due meta' dovrebbero apparire percettivamente diverse
+    in saturazione e luminosita'. RITORNA DIRETTAMENTE UN'IMMAGINE RGB
+    (bypassa apply_colors, perche' servono tre colori -- base, nero,
+    bianco -- non solo i due della palette).
+    """
+    base_rgb = np.array([int(line_color[1:3], 16) / 255, int(line_color[3:5], 16) / 255, int(line_color[5:7], 16) / 255])
+
+    bass_val = audio_features["bass"][frame % len(audio_features["bass"])]
+    stripe_w = max(4, int((22 / num_elements_factor * element_size_factor) * pixel_scale))
+    line_w = max(1, int((2 + bass_val * 2 * intensity) * pixel_scale))
+    shift = int(frame * (1 + bass_val * 3) * rotation_speed_factor * pixel_scale)
+
+    yv, xv = np.mgrid[0:height, 0:width]
+    grid_mask = (((xv + shift) % stripe_w) < line_w) | ((yv % stripe_w) < line_w)
+    left_half = xv < width / 2
+
+    rgb = np.tile(base_rgb.reshape(1, 1, 3), (height, width, 1)).astype(float)
+    rgb[grid_mask & left_half] = np.array([0.0, 0.0, 0.0])
+    rgb[grid_mask & ~left_half] = np.array([1.0, 1.0, 1.0])
+    return rgb
+
 def generate_illusion_frame(width, height, frame, audio_features, intensity, illusion_type, seed, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale=1.0): # AGGIORNATO
     np.random.seed(seed + frame)
 
@@ -1730,6 +1912,17 @@ def generate_illusion_frame(width, height, frame, audio_features, intensity, ill
         img = ternus_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     elif illusion_type == "Brucke-Bartley Effect":
         img = brucke_bartley_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Kinetic Depth Effect":
+        img = kinetic_depth_effect_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Ames Window Illusion":
+        img = ames_window_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Necker Cube":
+        img = necker_cube_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
+    elif illusion_type == "Von Bezold Spreading":
+        # Richiede tre colori (base/nero/bianco) per l'assimilazione: ritorna
+        # gia' un'immagine RGB e bypassa apply_colors (usa comunque line_color
+        # dell'utente come colore di base).
+        return von_bezold_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     else:
         img = spiral_illusion(width, height, frame, audio_features, intensity, element_size_factor, num_elements_factor, rotation_speed_factor, pixel_scale)
     return apply_colors(img, line_color, bg_color)
@@ -1793,6 +1986,8 @@ illusion_type = st.sidebar.selectbox(
         "Line Motion Illusion", "Motion-Induced Blindness", "Troxler Fading",
         "McCollough Effect",
         "Phi/Beta Movement", "Ternus Illusion", "Brucke-Bartley Effect",
+        "Kinetic Depth Effect", "Ames Window Illusion", "Necker Cube",
+        "Von Bezold Spreading",
     ]
 )
 
@@ -1829,6 +2024,8 @@ with st.expander("🖼️ Anteprima di tutti gli effetti disponibili", expanded=
         "Line Motion Illusion", "Motion-Induced Blindness", "Troxler Fading",
         "McCollough Effect",
         "Phi/Beta Movement", "Ternus Illusion", "Brucke-Bartley Effect",
+        "Kinetic Depth Effect", "Ames Window Illusion", "Necker Cube",
+        "Von Bezold Spreading",
     ]
     _thumb_cols = st.columns(4)
     for _i, _name in enumerate(_thumb_names):
